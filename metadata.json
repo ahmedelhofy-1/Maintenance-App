@@ -1,0 +1,7 @@
+{
+  "name": "MaintenX - Smart CMMS",
+  "description": "An AI-powered Computerized Maintenance Management System for industrial facilities.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
