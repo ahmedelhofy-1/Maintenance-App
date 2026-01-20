@@ -51,6 +51,35 @@ export interface WorkOrder {
   isOperational?: boolean;
 }
 
+export interface Part {
+  id: string;
+  name: string;
+  category: string;
+  stock: number;
+  minStock: number;
+  unit: string;
+  cost: number;
+  location: string;
+}
+
+export type RequestStatus = 'Pending' | 'Approved' | 'Issued' | 'Cancelled';
+
+export interface PartRequestItem {
+  partId: string;
+  quantity: number;
+}
+
+export interface PartRequest {
+  id: string;
+  workOrderId?: string;
+  assetId: string;
+  requestedBy: string;
+  requestDate: string;
+  status: RequestStatus;
+  items: PartRequestItem[];
+  notes?: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'model';
   content: string;

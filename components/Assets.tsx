@@ -1,12 +1,51 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { MOCK_ASSETS } from '../constants';
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
+import { MOCK_ASSETS, fetchAssetHealthHistory } from '../constants';
 import { Asset, AssetStatus, MasterData } from '../types';
 
 interface AssetsProps {
   masterData: MasterData;
 }
+
+const HealthTrend: React.FC<{ assetId: string, currentHealth: number }> = ({ assetId, currentHealth }) => {
+  const [history, setHistory] = useState<{ date: string, score: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchAssetHealthHistory(assetId).then(data => {
+      if (mounted) {
+        setHistory(data);
+        setLoading(false);
+      }
+    });
+    return () => { mounted = false; };
+  }, [assetId]);
+
+  if (loading) return <div className="h-12 w-full bg-slate-50 animate-pulse rounded-lg" />;
+
+  const trendColor = currentHealth > 80 ? '#22c55e' : currentHealth > 40 ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div className="h-12 w-full mt-2">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={history}>
+          <YAxis domain={[0, 100]} hide />
+          <Line 
+            type="monotone" 
+            dataKey="score" 
+            stroke={trendColor} 
+            strokeWidth={2} 
+            dot={false} 
+            animationDuration={1500}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
 
 const Assets: React.FC<AssetsProps> = ({ masterData }) => {
   const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
@@ -32,7 +71,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
     imageFile: null as string | null
   });
 
-  // Update form defaults if master data changes and not editing
   useEffect(() => {
     if (!editingAssetId) {
       setFormData(prev => ({
@@ -48,7 +86,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
 
   const filteredAssets = assets.filter(asset => {
     const searchTerm = filter.toLowerCase();
-    // Use String() wrapper to prevent "toLowerCase is not a function" if field is numeric from Excel
     const matchesSearch = 
       String(asset.name || '').toLowerCase().includes(searchTerm) || 
       String(asset.id || '').toLowerCase().includes(searchTerm) ||
@@ -288,7 +325,7 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
-                    <span className="text-slate-400">System Health</span>
+                    <span className="text-slate-400">Health & History Trend</span>
                     <span className={`${asset.health > 80 ? 'text-green-600' : asset.health > 40 ? 'text-amber-600' : 'text-red-600'}`}>
                       {asset.health}%
                     </span>
@@ -301,6 +338,8 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                       style={{ width: `${asset.health}%` }}
                     />
                   </div>
+                  {/* Visual Trend Chart */}
+                  <HealthTrend assetId={asset.id} currentHealth={asset.health} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-slate-400">
@@ -332,7 +371,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
             
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[80vh]">
               <div className="space-y-6">
-                {/* General Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Definition</label>
@@ -358,7 +396,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                   </div>
                 </div>
 
-                {/* Brand & Model */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Brand</label>
@@ -395,7 +432,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                   </div>
                 </div>
 
-                {/* Technical Specs */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Serial No (Unique)</label>
@@ -421,7 +457,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                   </div>
                 </div>
 
-                {/* Status & Location */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Status</label>
@@ -450,7 +485,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                   </div>
                 </div>
 
-                {/* Health Override (Only for editing) */}
                 {editingAssetId && (
                    <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Health Percentage ({formData.health}%)</label>
@@ -465,7 +499,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                   </div>
                 )}
 
-                {/* Photo Upload */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Photo Evidence</label>
                   <div 

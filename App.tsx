@@ -6,6 +6,8 @@ import Assets from './components/Assets';
 import AIDiagnostic from './components/AIDiagnostic';
 import WorkOrders from './components/WorkOrders';
 import MasterDataEditor from './components/MasterData';
+import Inventory from './components/Inventory';
+import PartsRequests from './components/PartsRequests';
 import { MasterData } from './types';
 
 const INITIAL_MASTER_DATA: MasterData = {
@@ -32,6 +34,10 @@ const App: React.FC = () => {
         return <Assets masterData={masterData} />;
       case 'workorders':
         return <WorkOrders />;
+      case 'inventory':
+        return <Inventory />;
+      case 'requests':
+        return <PartsRequests />;
       case 'ai':
         return <AIDiagnostic />;
       case 'masterdata':
