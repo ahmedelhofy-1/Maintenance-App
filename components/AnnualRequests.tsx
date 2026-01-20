@@ -1,23 +1,51 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { MOCK_ANNUAL_REQUESTS, MOCK_PARTS } from '../constants';
-import { AnnualPartRequest, RequestStatus, Part } from '../types';
+import { AnnualPartRequest, RequestStatus, Part, MasterData } from '../types';
+import { syncToGoogleSheets } from '../services/syncService';
 
-const AnnualRequests: React.FC = () => {
+interface AnnualRequestsProps {
+  masterData?: MasterData; // Optional for backward compatibility but recommended
+}
+
+const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData }) => {
   const [requests, setRequests] = useState<AnnualPartRequest[]>(MOCK_ANNUAL_REQUESTS);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleSync = async (dataToSync: AnnualPartRequest[] = requests) => {
+    if (!masterData?.googleSheetsUrl) {
+      alert("Please configure your Google Sheets URL in the Master Data > Cloud Sync tab.");
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      // Flatten items for easier spreadsheet reading
+      const flattenedForSync = dataToSync.flatMap(req => 
+        req.items.map(item => ({
+          request_id: req.id,
+          requested_by: req.requestedBy,
+          store: req.storeLocation,
+          year: req.targetYear,
+          status: req.status,
+          part_id: item.partId,
+          quantity: item.quantity
+        }))
+      );
+      await syncToGoogleSheets(masterData.googleSheetsUrl, 'AnnualRequests', flattenedForSync);
+      alert("Annual planning data successfully pushed to Google Sheet!");
+    } catch (err) {
+      alert("Sync failed. Ensure your script is deployed as a Web App.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const downloadTemplate = () => {
-    const headers = [
-      ['Requested By', 'Store Location', 'Target Year', 'Part ID', 'Quantity', 'Notes']
-    ];
-    const example = [
-      ['Maintenance Head', 'Central Store A', '2025', 'PRT-001', '250', 'Annual bulk order for filtration units']
-    ];
-    
-    const ws = XLSX.utils.aoa_to_sheet([...headers, ...example]);
+    const headers = [['Requested By', 'Store Location', 'Target Year', 'Part ID', 'Quantity', 'Notes']];
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ['Maintenance Head', 'Central Store A', '2025', 'PRT-001', '250', 'Annual bulk order']]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Annual Requests Template");
     XLSX.writeFile(wb, "MaintenX_Annual_Parts_Request.xlsx");
@@ -32,35 +60,26 @@ const AnnualRequests: React.FC = () => {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
+        const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
 
-        const newRequests: AnnualPartRequest[] = data.map((row: any) => {
-          const id = `ANN-BULK-${Math.floor(1000 + Math.random() * 9000)}`;
-          return {
-            id,
-            requestedBy: String(row['Requested By'] || 'System User'),
-            storeLocation: String(row['Store Location'] || 'Unspecified Store'),
-            requestDate: new Date().toISOString().split('T')[0],
-            targetYear: String(row['Target Year'] || new Date().getFullYear().toString()),
-            status: 'Pending',
-            items: [{
-              partId: String(row['Part ID'] || ''),
-              quantity: parseInt(row['Quantity']) || 0
-            }],
-            notes: String(row['Notes'] || 'Annual planning upload.')
-          };
-        });
+        const newRequests: AnnualPartRequest[] = (data as any[]).map((row: any) => ({
+          id: `ANN-B-${Math.floor(1000 + Math.random() * 9000)}`,
+          requestedBy: String(row['Requested By'] || 'User'),
+          storeLocation: String(row['Store Location'] || 'Store'),
+          requestDate: new Date().toISOString().split('T')[0],
+          targetYear: String(row['Target Year'] || '2025'),
+          status: 'Pending',
+          items: [{ partId: String(row['Part ID'] || ''), quantity: parseInt(row['Quantity']) || 0 }],
+          notes: String(row['Notes'] || 'Manual upload')
+        }));
 
-        const validRequests = newRequests.filter(r => r.items[0].partId && r.items[0].quantity > 0);
-        setRequests(prev => [...validRequests, ...prev]);
-        alert(`Successfully imported ${validRequests.length} annual planning entries.`);
+        const updated = [...newRequests, ...requests];
+        setRequests(updated);
+        alert(`Imported ${newRequests.length} forecasting entries.`);
+        if (masterData?.googleSheetsUrl) handleSync(updated);
         if (fileInputRef.current) fileInputRef.current.value = '';
-      } catch (err) {
-        console.error(err);
-        alert("Failed to parse annual request file.");
-      }
+      } catch (err) { alert("Import failed."); }
     };
     reader.readAsBinaryString(file);
   };
@@ -74,37 +93,37 @@ const AnnualRequests: React.FC = () => {
     }
   };
 
-  const flattenedItems = requests.flatMap(req => 
-    (req.items || []).map(item => {
-      const part = MOCK_PARTS.find(p => p.id === item.partId);
-      
-      const partLoc = (part?.location || '').toLowerCase();
-      const targetLoc = (req.storeLocation || '').toLowerCase();
-      
-      const stockInLoc = (partLoc && targetLoc && partLoc.includes(targetLoc)) ? (part?.stock || 0) : 0;
-      const totalStock = part?.stock || 0;
+  const flattenedItems = useMemo(() => {
+    return (requests || []).flatMap(req => 
+      (req.items || []).map(item => {
+        const part = MOCK_PARTS.find(p => p.id === item.partId);
+        const partLoc = String(part?.location || '').toLowerCase();
+        const targetLoc = String(req.storeLocation || '').toLowerCase();
+        const stockInLoc = (partLoc && targetLoc && partLoc.includes(targetLoc)) ? (part?.stock || 0) : 0;
+        return {
+          requestId: req.id,
+          year: req.targetYear,
+          status: req.status,
+          store: req.storeLocation,
+          partId: item.partId,
+          partName: part?.name || 'N/A',
+          qtyRequested: item.quantity,
+          stockInLoc,
+          totalStock: part?.stock || 0,
+          maxLevel: part?.maxStock || 0,
+          unit: part?.unit || 'pcs'
+        };
+      })
+    );
+  }, [requests]);
 
-      return {
-        requestId: req.id,
-        year: req.targetYear,
-        status: req.status,
-        store: req.storeLocation,
-        partId: item.partId,
-        partName: part?.name || 'N/A',
-        qtyRequested: item.quantity,
-        stockInLoc: stockInLoc,
-        totalStock: totalStock,
-        maxLevel: part?.maxStock || 0,
-        unit: part?.unit || 'pcs'
-      };
-    })
-  );
-
-  const filteredItems = flattenedItems.filter(item => 
-    (item.partName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (item.partId || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (item.requestId || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-  );
+  const filteredItems = useMemo(() => {
+    const term = (searchTerm || '').toLowerCase();
+    return flattenedItems.filter(item => 
+      (item.partName || '').toLowerCase().includes(term) ||
+      (item.partId || '').toLowerCase().includes(term)
+    );
+  }, [flattenedItems, searchTerm]);
 
   return (
     <div className="space-y-6">
@@ -113,32 +132,23 @@ const AnnualRequests: React.FC = () => {
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
           <input
             type="text"
-            placeholder="Search planning by Part ID or Name..."
-            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            placeholder="Search planning..."
+            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl outline-none"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap gap-3">
           <button 
-            onClick={downloadTemplate}
-            className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-200 transition-all flex items-center gap-2"
+            disabled={isSyncing}
+            onClick={() => handleSync()}
+            className="px-4 py-2.5 bg-[#0F9D58] text-white rounded-xl text-sm font-bold shadow-lg shadow-green-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
           >
-            <span>📥</span> Template
+            {isSyncing ? '⏳' : '☁️'} Sync Sheets
           </button>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 hover:bg-slate-900 transition-all flex items-center gap-2"
-          >
-            <span>📄</span> Bulk Import
-          </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept=".xlsx, .xls, .csv" 
-            onChange={handleBulkUpload} 
-          />
+          <button onClick={downloadTemplate} className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200">📥 Template</button>
+          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold">📄 Import</button>
+          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
         </div>
       </div>
 
@@ -149,68 +159,36 @@ const AnnualRequests: React.FC = () => {
               <tr className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                 <th className="px-6 py-4">Part ID</th>
                 <th className="px-6 py-4">Part Name</th>
-                <th className="px-6 py-4">Quantity Request</th>
-                <th className="px-6 py-4">Stock (Target Store)</th>
-                <th className="px-6 py-4">Total Stock</th>
-                <th className="px-6 py-4">Max Level</th>
+                <th className="px-6 py-4">Request</th>
+                <th className="px-6 py-4">In Store</th>
+                <th className="px-6 py-4">Total</th>
+                <th className="px-6 py-4">Max</th>
                 <th className="px-6 py-4 text-right">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredItems.map((item, idx) => {
-                const isOverCapacity = (item.stockInLoc + item.qtyRequested) > item.maxLevel;
-                
-                return (
-                  <tr key={`${item.requestId}-${idx}`} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className="text-[10px] font-mono text-slate-600 font-black uppercase bg-slate-100 px-2 py-1 rounded">
-                        {item.partId}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900">{item.partName}</div>
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">REF: {item.requestId} • {item.year}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-sm font-black text-blue-600">{item.qtyRequested}</span>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">{item.unit}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-bold text-slate-700">{item.stockInLoc}</div>
-                      <div className="text-[9px] font-bold text-slate-400 uppercase">IN {item.store}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-bold text-slate-900">{item.totalStock}</div>
-                      <div className="text-[9px] font-bold text-slate-400 uppercase">ALL LOCATIONS</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-bold text-slate-900">{item.maxLevel}</div>
-                      {isOverCapacity && (
-                        <div className="text-[8px] font-black text-orange-500 uppercase mt-0.5 animate-pulse">CAPACITY EXCEEDED</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+              {filteredItems.map((item, idx) => (
+                <tr key={`${item.requestId}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4"><span className="text-[10px] font-mono font-black bg-slate-100 px-2 py-1 rounded">{item.partId}</span></td>
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-slate-900">{item.partName}</div>
+                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{item.requestId} • {item.year}</div>
+                  </td>
+                  <td className="px-6 py-4 text-sm font-black text-blue-600">{item.qtyRequested} {item.unit}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-slate-700">{item.stockInLoc}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-slate-900">{item.totalStock}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-slate-900">{item.maxLevel}</td>
+                  <td className="px-6 py-4 text-right">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>
+                      {item.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
-
-      {filteredItems.length === 0 && (
-        <div className="py-20 text-center text-slate-500 bg-white rounded-3xl border border-slate-200 border-dashed">
-          <p className="text-4xl mb-2">📊</p>
-          <p className="font-black uppercase tracking-widest text-sm text-slate-400">Planning Registry Clear</p>
-          <p className="text-xs mt-2">No matching annual requests found.</p>
-        </div>
-      )}
     </div>
   );
 };

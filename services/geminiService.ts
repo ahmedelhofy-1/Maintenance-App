@@ -1,8 +1,8 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY || "";
-const ai = new GoogleGenAI({ apiKey });
+// Initialize the Google GenAI SDK using process.env.API_KEY as per the guidelines.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const troubleshootAsset = async (issueDescription: string, assetType: string) => {
   try {
@@ -23,6 +23,7 @@ export const troubleshootAsset = async (issueDescription: string, assetType: str
       }
     });
 
+    // Directly access the text property as per latest SDK guidelines.
     return response.text;
   } catch (error) {
     console.error("Gemini troubleshooting error:", error);
@@ -41,6 +42,7 @@ export const analyzeMaintenanceImage = async (base64Image: string, assetName: st
         ]
       }
     });
+    // Directly access the text property as per latest SDK guidelines.
     return response.text;
   } catch (error) {
     console.error("Gemini image analysis error:", error);

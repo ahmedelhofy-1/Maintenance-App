@@ -7,7 +7,7 @@ interface MasterDataEditorProps {
   onUpdate: (data: MasterData) => void;
 }
 
-type CategoryKey = keyof MasterData;
+type CategoryKey = keyof MasterData | 'integration';
 
 const MasterDataEditor: React.FC<MasterDataEditorProps> = ({ masterData, onUpdate }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('departments');
@@ -19,19 +19,20 @@ const MasterDataEditor: React.FC<MasterDataEditorProps> = ({ masterData, onUpdat
     { key: 'brands', label: 'Authorized Brands', icon: '🏷️' },
     { key: 'powerRatings', label: 'Power Standards', icon: '⚡' },
     { key: 'years', label: 'Model Years', icon: '📅' },
+    { key: 'integration', label: 'Cloud Sync', icon: '☁️' },
   ];
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItemValue.trim()) return;
+    if (!newItemValue.trim() || selectedCategory === 'integration') return;
     
-    // Check if duplicate
-    if (masterData[selectedCategory].includes(newItemValue.trim())) {
+    const categoryData = (masterData as any)[selectedCategory];
+    if (Array.isArray(categoryData) && categoryData.includes(newItemValue.trim())) {
       alert("This entry already exists.");
       return;
     }
 
-    const updatedList = [...masterData[selectedCategory], newItemValue.trim()].sort();
+    const updatedList = [...(categoryData as string[]), newItemValue.trim()].sort();
     onUpdate({
       ...masterData,
       [selectedCategory]: updatedList
@@ -40,21 +41,46 @@ const MasterDataEditor: React.FC<MasterDataEditorProps> = ({ masterData, onUpdat
   };
 
   const handleRemoveItem = (itemToRemove: string) => {
-    if (confirm(`Are you sure you want to remove "${itemToRemove}"? This might affect new asset registration.`)) {
-      const updatedList = masterData[selectedCategory].filter(item => item !== itemToRemove);
-      onUpdate({
-        ...masterData,
-        [selectedCategory]: updatedList
-      });
+    if (confirm(`Are you sure you want to remove "${itemToRemove}"?`)) {
+      const categoryData = (masterData as any)[selectedCategory];
+      if (Array.isArray(categoryData)) {
+        const updatedList = categoryData.filter(item => item !== itemToRemove);
+        onUpdate({
+          ...masterData,
+          [selectedCategory]: updatedList
+        });
+      }
     }
   };
+
+  const handleSyncUrlUpdate = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate({
+      ...masterData,
+      googleSheetsUrl: e.target.value
+    });
+  };
+
+  const appsScriptCode = `function doPost(e) {
+  var json = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(json.type) || ss.insertSheet(json.type);
+  var data = json.payload;
+  if (data.length > 0) {
+    sheet.clear();
+    var headers = Object.keys(data[0]);
+    sheet.appendRow(headers);
+    data.forEach(function(row) {
+      sheet.appendRow(headers.map(function(h) { return row[h]; }));
+    });
+  }
+  return ContentService.createTextOutput("OK");
+}`;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row h-[70vh]">
-        {/* Categories Sidebar */}
         <div className="w-full md:w-72 border-r border-slate-100 bg-slate-50/30 p-4">
-          <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-6 px-2">Configuration Lists</h3>
+          <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-6 px-2">System Registry</h3>
           <div className="space-y-1">
             {categories.map((cat) => (
               <button
@@ -73,66 +99,68 @@ const MasterDataEditor: React.FC<MasterDataEditorProps> = ({ masterData, onUpdat
           </div>
         </div>
 
-        {/* List Content */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="p-8 border-b border-slate-50">
             <h2 className="text-2xl font-black text-slate-900 mb-1">
-              Manage {categories.find(c => c.key === selectedCategory)?.label}
+              {selectedCategory === 'integration' ? 'Google Sheets Integration' : `Manage ${categories.find(c => c.key === selectedCategory)?.label}`}
             </h2>
             <p className="text-slate-500 text-sm">
-              Add or remove authorized values for the facility registry.
+              {selectedCategory === 'integration' 
+                ? 'Sync your local facility data with a live Google Sheet.' 
+                : 'Modify authorized values for the facility registry.'}
             </p>
           </div>
 
           <div className="flex-1 p-8 overflow-y-auto">
-            <form onSubmit={handleAddItem} className="mb-8 flex gap-3">
-              <input
-                type="text"
-                placeholder={`Add new ${categories.find(c => c.key === selectedCategory)?.label.toLowerCase()}...`}
-                className="flex-1 p-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none text-sm transition-all"
-                value={newItemValue}
-                onChange={(e) => setNewItemValue(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all text-sm whitespace-nowrap"
-              >
-                Add Entry
-              </button>
-            </form>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {masterData[selectedCategory].map((item) => (
-                <div 
-                  key={item} 
-                  className="group flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-blue-200 hover:shadow-sm transition-all"
-                >
-                  <span className="text-sm font-medium text-slate-700">{item}</span>
-                  <button
-                    onClick={() => handleRemoveItem(item)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all text-lg"
-                    title="Remove item"
-                  >
-                    &times;
-                  </button>
+            {selectedCategory === 'integration' ? (
+              <div className="space-y-8">
+                <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl">
+                  <h4 className="text-sm font-black text-blue-900 uppercase mb-4">Step 1: Endpoint Configuration</h4>
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">Apps Script Web App URL</label>
+                  <input 
+                    type="url"
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full p-4 border border-blue-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none font-mono text-xs"
+                    value={masterData.googleSheetsUrl || ''}
+                    onChange={handleSyncUrlUpdate}
+                  />
+                  <p className="text-[10px] text-blue-600 mt-2 font-medium italic">Paste the "Web App URL" from your Google Apps Script deployment.</p>
                 </div>
-              ))}
-            </div>
 
-            {masterData[selectedCategory].length === 0 && (
-              <div className="text-center py-20 bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
-                <p className="text-slate-400 font-medium">No items in this category yet.</p>
+                <div className="bg-slate-900 p-6 rounded-2xl text-white">
+                  <h4 className="text-sm font-black text-slate-400 uppercase mb-4">Step 2: Sheet Script (Copy/Paste)</h4>
+                  <p className="text-xs text-slate-300 mb-4 leading-relaxed">Open your Google Sheet, go to <b>Extensions > Apps Script</b>, and paste this code:</p>
+                  <pre className="bg-black/50 p-4 rounded-xl font-mono text-[10px] overflow-x-auto text-green-400">
+                    {appsScriptCode}
+                  </pre>
+                </div>
               </div>
+            ) : (
+              <>
+                <form onSubmit={handleAddItem} className="mb-8 flex gap-3">
+                  <input
+                    type="text"
+                    placeholder={`Add new entry...`}
+                    className="flex-1 p-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none text-sm transition-all"
+                    value={newItemValue}
+                    onChange={(e) => setNewItemValue(e.target.value)}
+                  />
+                  <button type="submit" className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all text-sm">Add</button>
+                </form>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {Array.isArray((masterData as any)[selectedCategory]) && 
+                    ((masterData as any)[selectedCategory] as string[]).map((item) => (
+                      <div key={item} className="group flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-blue-200 transition-all">
+                        <span className="text-sm font-medium text-slate-700">{item}</span>
+                        <button onClick={() => handleRemoveItem(item)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all text-lg">&times;</button>
+                      </div>
+                    ))
+                  }
+                </div>
+              </>
             )}
           </div>
-        </div>
-      </div>
-
-      <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-4">
-        <span className="text-2xl">💡</span>
-        <div className="text-sm text-amber-800">
-          <p className="font-bold mb-1">System Note</p>
-          <p>Changes made here will immediately update the dropdown lists in the <strong>Asset Registration Form</strong> and <strong>Filtering</strong> menus. Be careful when removing items that are already assigned to existing assets.</p>
         </div>
       </div>
     </div>

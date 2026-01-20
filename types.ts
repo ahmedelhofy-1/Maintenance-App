@@ -18,6 +18,7 @@ export interface MasterData {
   assetTypes: string[];
   powerRatings: string[];
   years: string[];
+  googleSheetsUrl?: string; // Integration URL
 }
 
 export interface Asset {
