@@ -37,6 +37,12 @@ const Inventory: React.FC<InventoryProps> = ({ masterData }) => {
     }
   };
 
+  const handleClearInventory = () => {
+    if (confirm("Are you sure you want to clear all inventory items? This will empty the local list. You will need to re-upload or sync to restore data.")) {
+      setParts([]);
+    }
+  };
+
   const downloadTemplate = () => {
     const headers = [['Part ID', 'Part Name', 'Category', 'Stock Level', 'Min Stock Level', 'Max Stock Level', 'Unit', 'Unit Cost', 'Storage Location']];
     const ws = XLSX.utils.aoa_to_sheet([...headers, ['PRT-EX-001', 'Ball Bearing', 'Bearings', '20', '5', '100', 'pcs', '12.50', 'Shelf B-12']]);
@@ -85,28 +91,34 @@ const Inventory: React.FC<InventoryProps> = ({ masterData }) => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="relative w-full md:w-96">
+        <div className="relative w-full md:w-80">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
           <input
             type="text"
             placeholder="Search parts..."
-            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <button 
             disabled={isSyncing}
             onClick={() => handleSync()}
-            className="px-4 py-2.5 bg-[#0F9D58] text-white rounded-xl text-sm font-bold shadow-lg shadow-green-500/20 hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50"
+            className="px-4 py-2.5 bg-[#0F9D58] text-white rounded-xl text-xs font-bold shadow-lg shadow-green-500/20 hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50"
           >
             {isSyncing ? '⏳ Syncing...' : '☁️ Sync Sheets'}
           </button>
-          <button onClick={downloadTemplate} className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-200 transition-all">📥 Template</button>
-          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold hover:bg-slate-900 transition-all">📄 Bulk Upload</button>
+          <button onClick={downloadTemplate} className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold border border-slate-200 hover:bg-slate-200 transition-all">📥 Template</button>
+          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900 transition-all">📄 Upload</button>
           <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
-          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20">+ Add Part</button>
+          <button 
+            onClick={handleClearInventory} 
+            className="px-4 py-2.5 border border-red-200 text-red-600 rounded-xl text-xs font-bold hover:bg-red-50 transition-all"
+          >
+            🗑️ Clear All
+          </button>
+          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20">+ Add Part</button>
         </div>
       </div>
 
@@ -125,27 +137,38 @@ const Inventory: React.FC<InventoryProps> = ({ masterData }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredParts.map((part) => (
-                <tr key={part.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="text-[10px] font-mono text-slate-600 font-black bg-slate-100 px-2 py-1 rounded">{part.id}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-slate-900">{part.name}</div>
-                    <div className="text-[10px] text-slate-400 uppercase">{part.category}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2.5 h-2.5 rounded-full ${part.stock <= part.minStock ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
-                      <span className="font-black text-slate-900">{part.stock} <span className="text-slate-400 font-bold">{part.unit}</span></span>
+              {filteredParts.length > 0 ? (
+                filteredParts.map((part) => (
+                  <tr key={part.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <span className="text-[10px] font-mono text-slate-600 font-black bg-slate-100 px-2 py-1 rounded">{part.id}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-slate-900">{part.name}</div>
+                      <div className="text-[10px] text-slate-400 uppercase">{part.category}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full ${part.stock <= part.minStock ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
+                        <span className="font-black text-slate-900">{part.stock} <span className="text-slate-400 font-bold">{part.unit}</span></span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-xs font-bold text-slate-600">{part.maxStock} {part.unit}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-600">📍 {part.location}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-slate-900">${part.cost.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-right font-medium text-slate-400">✏️</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="px-6 py-20 text-center">
+                    <div className="flex flex-col items-center">
+                      <span className="text-4xl mb-4 opacity-20">📦</span>
+                      <p className="text-slate-400 font-medium">No parts in registry. Click "Upload" or "Add Part" to begin.</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-xs font-bold text-slate-600">{part.maxStock} {part.unit}</td>
-                  <td className="px-6 py-4 text-sm font-medium text-slate-600">📍 {part.location}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-slate-900">${part.cost.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-right font-medium text-slate-400">✏️</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

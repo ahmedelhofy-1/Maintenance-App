@@ -1,22 +1,13 @@
-import { GoogleGenAI, Type } from "@google/genai";
 
-// Safe access to environment variables
-const getApiKey = () => {
-  try {
-    return (typeof process !== 'undefined' && process.env?.API_KEY) || "";
-  } catch (e) {
-    return "";
-  }
-};
+import { GoogleGenAI } from "@google/genai";
 
-const apiKey = getApiKey();
-const ai = new GoogleGenAI({ apiKey });
+// Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+// Initialize the AI client inside the functions to ensure it uses the latest API key environment variable.
+// The API key is obtained directly from process.env.API_KEY as per the library guidelines.
 
 export const troubleshootAsset = async (issueDescription: string, assetType: string) => {
-  if (!apiKey) {
-    console.warn("Gemini API Key is missing. Troubleshooting disabled.");
-    return "API Key not configured. Please check environment settings.";
-  }
+  // Always initialize GoogleGenAI with a named parameter.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const response = await ai.models.generateContent({
@@ -36,6 +27,7 @@ export const troubleshootAsset = async (issueDescription: string, assetType: str
       }
     });
 
+    // Access the .text property directly (do not call as a method).
     return response.text;
   } catch (error) {
     console.error("Gemini troubleshooting error:", error);
@@ -44,18 +36,27 @@ export const troubleshootAsset = async (issueDescription: string, assetType: str
 };
 
 export const analyzeMaintenanceImage = async (base64Image: string, assetName: string) => {
-  if (!apiKey) return "API Key missing.";
+  // Always initialize GoogleGenAI with a named parameter.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
         parts: [
-          { inlineData: { data: base64Image, mimeType: 'image/jpeg' } },
-          { text: `Analyze this maintenance photo for the asset "${assetName}". Identify visible wear, damage, or anomalies. Suggest potential repairs.` }
+          { 
+            inlineData: { 
+              data: base64Image, 
+              mimeType: 'image/jpeg' 
+            } 
+          },
+          { 
+            text: `Analyze this maintenance photo for the asset "${assetName}". Identify visible wear, damage, or anomalies. Suggest potential repairs.` 
+          }
         ]
       }
     });
+    // Access the .text property directly.
     return response.text;
   } catch (error) {
     console.error("Gemini image analysis error:", error);

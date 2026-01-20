@@ -1,12 +1,17 @@
-
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { MOCK_PART_REQUESTS, MOCK_PARTS, MOCK_ASSETS, MOCK_WORK_ORDERS } from '../constants';
-import { PartRequest, RequestStatus } from '../types';
+import { PartRequest, RequestStatus, MasterData } from '../types';
+import { syncToGoogleSheets } from '../services/syncService';
 
-const PartsRequests: React.FC = () => {
+interface PartsRequestsProps {
+  masterData: MasterData;
+}
+
+const PartsRequests: React.FC<PartsRequestsProps> = ({ masterData }) => {
   const [requests, setRequests] = useState<PartRequest[]>(MOCK_PART_REQUESTS);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [newRequest, setNewRequest] = useState({
@@ -16,6 +21,35 @@ const PartsRequests: React.FC = () => {
     notes: '',
     items: [{ partId: '', quantity: 1 }]
   });
+
+  const handleSync = async (dataToSync: PartRequest[] = requests) => {
+    if (!masterData.googleSheetsUrl) {
+      alert("Configure Google Sheets URL in Master Data tab.");
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      // Flatten parts for the spreadsheet
+      const flattened = dataToSync.flatMap(req => 
+        req.items.map(item => ({
+          request_id: req.id,
+          date: req.requestDate,
+          requested_by: req.requestedBy,
+          asset_id: req.assetId,
+          status: req.status,
+          part_id: item.partId,
+          quantity: item.quantity,
+          notes: req.notes || ''
+        }))
+      );
+      await syncToGoogleSheets(masterData.googleSheetsUrl, 'PartsRequests', flattened);
+      alert("Requisition data pushed to Sheets!");
+    } catch (err) {
+      alert("Sync failed.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const getStatusStyles = (status: RequestStatus) => {
     switch (status) {
@@ -28,20 +62,16 @@ const PartsRequests: React.FC = () => {
   };
 
   const handleStatusChange = (requestId: string, newStatus: RequestStatus) => {
-    setRequests(prev => prev.map(req => 
+    const updated = requests.map(req => 
       req.id === requestId ? { ...req, status: newStatus } : req
-    ));
+    );
+    setRequests(updated);
+    if (masterData.googleSheetsUrl) handleSync(updated);
   };
 
   const downloadTemplate = () => {
-    const headers = [
-      ['Asset ID', 'Work Order ID', 'Requested By', 'Part ID', 'Quantity', 'Notes']
-    ];
-    const example = [
-      ['AST-001', 'WO-101', 'John Doe', 'PRT-001', '2', 'Needed for routine HVAC maintenance']
-    ];
-    
-    const ws = XLSX.utils.aoa_to_sheet([...headers, ...example]);
+    const headers = [['Asset ID', 'Work Order ID', 'Requested By', 'Part ID', 'Quantity', 'Notes']];
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ['AST-001', 'WO-101', 'John Doe', 'PRT-001', '2', 'Needed for repair']]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Requests Template");
     XLSX.writeFile(wb, "MaintenX_Parts_Request_Template.xlsx");
@@ -56,62 +86,26 @@ const PartsRequests: React.FC = () => {
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
+        const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws);
 
-        const newRequestsList: PartRequest[] = data.map((row: any) => {
-          const id = `REQ-BULK-${Math.floor(1000 + Math.random() * 9000)}`;
-          return {
-            id,
-            assetId: String(row['Asset ID'] || ''),
-            workOrderId: String(row['Work Order ID'] || ''),
-            requestedBy: String(row['Requested By'] || 'System Import'),
-            requestDate: new Date().toISOString().split('T')[0],
-            status: 'Pending',
-            items: [
-              { 
-                partId: String(row['Part ID'] || ''), 
-                quantity: parseInt(row['Quantity']) || 1 
-              }
-            ],
-            notes: String(row['Notes'] || 'Bulk imported request.')
-          };
-        });
+        const newReqs: PartRequest[] = (data as any[]).map((row: any) => ({
+          id: `REQ-B-${Math.floor(Math.random() * 9999)}`,
+          assetId: String(row['Asset ID'] || ''),
+          workOrderId: String(row['Work Order ID'] || ''),
+          requestedBy: String(row['Requested By'] || 'Import'),
+          requestDate: new Date().toISOString().split('T')[0],
+          status: 'Pending',
+          items: [{ partId: String(row['Part ID'] || ''), quantity: parseInt(row['Quantity']) || 1 }],
+          notes: String(row['Notes'] || '')
+        }));
 
-        // Filter out completely invalid rows
-        const validRequests = newRequestsList.filter(r => r.assetId && r.items[0].partId);
-
-        setRequests(prev => [...validRequests, ...prev]);
-        alert(`Successfully imported ${validRequests.length} parts requests.`);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      } catch (err) {
-        console.error(err);
-        alert("Failed to parse parts request file. Please ensure you use the provided template.");
-      }
+        const updated = [...newReqs, ...requests];
+        setRequests(updated);
+        if (masterData.googleSheetsUrl) handleSync(updated);
+      } catch (err) { alert("Import failed."); }
     };
     reader.readAsBinaryString(file);
-  };
-
-  const handleCreateRequest = (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = `REQ-${Math.floor(500 + Math.random() * 500)}`;
-    const freshRequest: PartRequest = {
-      id,
-      ...newRequest,
-      requestDate: new Date().toISOString().split('T')[0],
-      status: 'Pending',
-      items: newRequest.items.filter(i => i.partId && i.quantity > 0)
-    };
-    setRequests([freshRequest, ...requests]);
-    setIsModalOpen(false);
-    setNewRequest({
-        assetId: '',
-        workOrderId: '',
-        requestedBy: 'John Doe',
-        notes: '',
-        items: [{ partId: '', quantity: 1 }]
-    });
   };
 
   return (
@@ -123,30 +117,16 @@ const PartsRequests: React.FC = () => {
         </div>
         <div className="flex flex-wrap gap-3 w-full md:w-auto">
           <button 
-            onClick={downloadTemplate}
-            className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-200 transition-all flex items-center gap-2"
+            disabled={isSyncing}
+            onClick={() => handleSync()}
+            className="px-4 py-2.5 bg-[#0F9D58] text-white rounded-xl text-sm font-bold shadow-lg shadow-green-500/20 hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50"
           >
-            <span>📥</span> Template
+            {isSyncing ? '⏳ Syncing...' : '☁️ Sync Sheets'}
           </button>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 hover:bg-slate-900 transition-all flex items-center gap-2"
-          >
-            <span>📄</span> Bulk Upload
-          </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept=".xlsx, .xls, .csv" 
-            onChange={handleBulkUpload} 
-          />
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2"
-          >
-            <span>📋</span> New Request
-          </button>
+          <button onClick={downloadTemplate} className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200">📥 Template</button>
+          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold">📄 Bulk Upload</button>
+          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
+          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold">+ New Request</button>
         </div>
       </div>
 
@@ -154,190 +134,44 @@ const PartsRequests: React.FC = () => {
         {requests.map((req) => {
           const asset = MOCK_ASSETS.find(a => a.id === req.assetId);
           return (
-            <div key={req.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow">
+            <div key={req.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-xl">📦</div>
                   <div>
-                    <div className="flex items-center gap-3">
-                      <h4 className="font-black text-slate-900 uppercase">{req.id}</h4>
-                      <span className={`px-3 py-0.5 rounded-full text-[10px] font-black uppercase border ${getStatusStyles(req.status)}`}>
-                        {req.status}
-                      </span>
-                    </div>
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-0.5">
-                      Requested by {req.requestedBy} • {req.requestDate}
-                    </p>
+                    <h4 className="font-black text-slate-900 uppercase">{req.id} <span className={`ml-2 px-3 py-0.5 rounded-full text-[10px] border ${getStatusStyles(req.status)}`}>{req.status}</span></h4>
+                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{req.requestedBy} • {req.requestDate}</p>
                   </div>
                 </div>
-
                 <div className="flex gap-2">
                   {req.status === 'Pending' && (
                     <>
-                      <button 
-                        onClick={() => handleStatusChange(req.id, 'Approved')}
-                        className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase hover:bg-blue-100 transition-all"
-                      >
-                        Approve
-                      </button>
-                      <button 
-                         onClick={() => handleStatusChange(req.id, 'Cancelled')}
-                        className="px-4 py-2 bg-slate-50 text-slate-400 rounded-xl text-[10px] font-black uppercase hover:bg-slate-100 transition-all"
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => handleStatusChange(req.id, 'Approved')} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase">Approve</button>
+                      <button onClick={() => handleStatusChange(req.id, 'Cancelled')} className="px-4 py-2 bg-slate-50 text-slate-400 rounded-xl text-[10px] font-black uppercase">Cancel</button>
                     </>
-                  )}
-                  {req.status === 'Approved' && (
-                    <button 
-                       onClick={() => handleStatusChange(req.id, 'Issued')}
-                      className="px-6 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-green-500/20 hover:bg-green-700 transition-all"
-                    >
-                      Mark as Issued
-                    </button>
                   )}
                 </div>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-50">
-                <div>
-                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Requested Items</h5>
-                  <div className="space-y-2">
-                    {req.items.map((item, idx) => {
-                      const part = MOCK_PARTS.find(p => p.id === item.partId);
-                      return (
-                        <div key={idx} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                          <div>
-                            <div className="text-sm font-bold text-slate-900">{part?.name || 'Unknown Part'}</div>
-                            <div className="text-[10px] font-mono text-slate-500 uppercase">{item.partId}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-black text-blue-600">x{item.quantity}</div>
-                            <div className="text-[9px] font-bold text-slate-400 uppercase">{part?.unit}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="bg-slate-50 p-4 rounded-xl">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Items</span>
+                  {req.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-sm font-bold">
+                      <span>{MOCK_PARTS.find(p => p.id === item.partId)?.name || item.partId}</span>
+                      <span className="text-blue-600">x{item.quantity}</span>
+                    </div>
+                  ))}
                 </div>
-
-                <div>
-                   <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Target Reference</h5>
-                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-                      <div className="flex justify-between text-xs font-bold uppercase">
-                        <span className="text-slate-400">Asset:</span>
-                        <span className="text-slate-900">{asset?.name || 'N/A'}</span>
-                      </div>
-                      <div className="flex justify-between text-xs font-bold uppercase">
-                        <span className="text-slate-400">Work Order:</span>
-                        <span className="text-slate-900">{req.workOrderId || 'General Request'}</span>
-                      </div>
-                      <div className="pt-2 mt-2 border-t border-slate-200/50">
-                        <span className="text-[10px] font-black text-slate-400 uppercase block mb-1">Technician Notes:</span>
-                        <p className="text-[11px] text-slate-600 italic leading-relaxed">"{req.notes || 'No notes provided.'}"</p>
-                      </div>
-                   </div>
+                <div className="bg-slate-50 p-4 rounded-xl">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Target</span>
+                  <p className="text-xs font-bold text-slate-900">Asset: {asset?.name || 'N/A'}</p>
+                  <p className="text-xs text-slate-500 italic">"{req.notes || 'No notes'}"</p>
                 </div>
               </div>
             </div>
           );
         })}
       </div>
-
-      {requests.length === 0 && (
-        <div className="py-20 text-center text-slate-500 bg-white rounded-3xl border border-slate-200 border-dashed">
-          <p className="text-4xl mb-2">📥</p>
-          <p className="font-black uppercase tracking-widest text-sm text-slate-400">No Requisitions Found</p>
-        </div>
-      )}
-
-      {/* New Request Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-xl font-black text-slate-900">New Requisition</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
-            </div>
-            
-            <form onSubmit={handleCreateRequest} className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset</label>
-                  <select 
-                    required
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-sm outline-none"
-                    value={newRequest.assetId}
-                    onChange={e => setNewRequest({...newRequest, assetId: e.target.value})}
-                  >
-                    <option value="">Select Asset</option>
-                    {MOCK_ASSETS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Work Order ID</label>
-                   <select 
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-sm outline-none"
-                    value={newRequest.workOrderId}
-                    onChange={e => setNewRequest({...newRequest, workOrderId: e.target.value})}
-                  >
-                    <option value="">N/A (General)</option>
-                    {MOCK_WORK_ORDERS.map(w => <option key={w.id} value={w.id}>{w.id} - {w.title}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Request Items</label>
-                {newRequest.items.map((item, idx) => (
-                  <div key={idx} className="flex gap-2">
-                    <select 
-                      required
-                      className="flex-1 p-2.5 border border-slate-200 rounded-lg text-sm outline-none"
-                      value={item.partId}
-                      onChange={e => {
-                        const updated = [...newRequest.items];
-                        updated[idx].partId = e.target.value;
-                        setNewRequest({...newRequest, items: updated});
-                      }}
-                    >
-                      <option value="">Select Part from Store</option>
-                      {MOCK_PARTS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.stock} available)</option>)}
-                    </select>
-                    <input 
-                      type="number" 
-                      min="1"
-                      className="w-24 p-2.5 border border-slate-200 rounded-lg text-sm outline-none"
-                      value={item.quantity}
-                      onChange={e => {
-                        const updated = [...newRequest.items];
-                        updated[idx].quantity = parseInt(e.target.value);
-                        setNewRequest({...newRequest, items: updated});
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Technician Notes</label>
-                <textarea 
-                  className="w-full p-3 border border-slate-200 rounded-xl text-sm h-24 resize-none outline-none"
-                  placeholder="Reason for requisition..."
-                  value={newRequest.notes}
-                  onChange={e => setNewRequest({...newRequest, notes: e.target.value})}
-                />
-              </div>
-
-              <div className="pt-2 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg font-bold text-slate-600 text-sm">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20 text-sm">Submit Requisition</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

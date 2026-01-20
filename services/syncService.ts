@@ -11,49 +11,26 @@ export const syncToGoogleSheets = async (url: string, dataType: string, data: an
   try {
     const payload = {
       action: 'sync',
-      type: dataType, // e.g., 'Inventory', 'Assets', 'AnnualRequests'
+      type: dataType, 
       timestamp: new Date().toISOString(),
       payload: data
     };
 
-    const response = await fetch(url, {
+    // Google Apps Script Web Apps often require 'no-cors' to avoid preflight (OPTIONS) blocks.
+    // We send as a simple POST with text/plain which GAS can read from e.postData.contents.
+    await fetch(url, {
       method: 'POST',
-      mode: 'no-cors', // Standard for Google Apps Script Web Apps to avoid preflight issues
+      mode: 'no-cors',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'text/plain'
       },
       body: JSON.stringify(payload)
     });
 
-    // Note: With 'no-cors', we can't read the response body or status, 
-    // but the data is successfully transmitted to the script.
+    // In 'no-cors' mode, the response is opaque. We assume success if no error is thrown by fetch.
     return true;
   } catch (error) {
-    console.error("Sync Error:", error);
+    console.error("Sync Service Error:", error);
     throw error;
   }
 };
-
-/**
- * Apps Script code template for the user to paste into Google Sheet Script Editor:
- * 
- * function doPost(e) {
- *   var json = JSON.parse(e.postData.contents);
- *   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(json.type) || 
- *               SpreadsheetApp.getActiveSpreadsheet().insertSheet(json.type);
- *   
- *   var data = json.payload;
- *   if (data.length > 0) {
- *     // Simple append or clear-and-set logic
- *     sheet.clear(); 
- *     var headers = Object.keys(data[0]);
- *     sheet.appendRow(headers);
- *     data.forEach(function(item) {
- *       var row = headers.map(function(h) { return item[h]; });
- *       sheet.appendRow(row);
- *     });
- *   }
- *   
- *   return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
- * }
- */

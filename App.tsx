@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -17,7 +16,7 @@ const INITIAL_MASTER_DATA: MasterData = {
   assetTypes: ['Centrifugal Pump', 'Electric Motor', 'HVAC Unit', 'Air Compressor', 'Hydraulic Press', 'Conveyor System', 'Generator'],
   powerRatings: ['110V AC', '220V AC', '480V 3-Phase', '24V DC', 'Hydraulic', 'Pneumatic'],
   years: Array.from({ length: 16 }, (_, i) => (2025 - i).toString()),
-  googleSheetsUrl: ''
+  googleSheetsUrl: 'https://script.google.com/macros/s/AKfycbxed1t01TUPcgxbWRi6suteZ5Xn8p8xH6dBs8jYWDTyCy9TFiNH7Mt1gIKYZgHGpHnqgw/exec'
 };
 
 const App: React.FC = () => {
@@ -35,13 +34,13 @@ const App: React.FC = () => {
       case 'assets':
         return <Assets masterData={masterData} />;
       case 'workorders':
-        return <WorkOrders />;
+        return <WorkOrders masterData={masterData} />;
       case 'inventory':
         return <Inventory masterData={masterData} />;
       case 'requests':
-        return <PartsRequests />;
+        return <PartsRequests masterData={masterData} />;
       case 'annual':
-        return <AnnualRequests />;
+        return <AnnualRequests masterData={masterData} />;
       case 'ai':
         return <AIDiagnostic />;
       case 'masterdata':

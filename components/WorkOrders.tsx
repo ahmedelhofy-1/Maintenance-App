@@ -1,7 +1,12 @@
 
 import React, { useState } from 'react';
 import { MOCK_WORK_ORDERS, MOCK_ASSETS } from '../constants';
-import { WorkOrder, WorkOrderStatus, MaintenanceType, Priority } from '../types';
+import { WorkOrder, WorkOrderStatus, MaintenanceType, Priority, MasterData } from '../types';
+import { syncToGoogleSheets } from '../services/syncService';
+
+interface WorkOrdersProps {
+  masterData: MasterData;
+}
 
 const WORKFLOW_STEPS: { id: WorkOrderStatus; label: string; icon: string; description: string }[] = [
   { id: 'MR Generated', label: 'Generate MR', icon: '🚜', description: 'Log Maintenance Request with Machine ID' },
@@ -13,8 +18,9 @@ const WORKFLOW_STEPS: { id: WorkOrderStatus; label: string; icon: string; descri
   { id: 'Completed', label: 'Finalized', icon: '✅', description: 'Continuous improvement data logged' },
 ];
 
-const WorkOrders: React.FC = () => {
+const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>(MOCK_WORK_ORDERS);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const getPriorityStyles = (priority: Priority) => {
     switch (priority) {
@@ -25,8 +31,25 @@ const WorkOrders: React.FC = () => {
     }
   };
 
+  const handleSync = async () => {
+    if (!masterData.googleSheetsUrl) {
+      alert("Please configure your Google Sheets URL in Master Data.");
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      await syncToGoogleSheets(masterData.googleSheetsUrl, 'WorkOrders', workOrders);
+      alert("Work Order data synced to Google Sheets!");
+    } catch (err) {
+      alert("Sync failed. Ensure your script is deployed as a Web App.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Explicitly typing updated as WorkOrder[] to prevent type widening and ensuring return for all paths.
   const handleNextStep = (woId: string) => {
-    setWorkOrders(prev => prev.map(wo => {
+    const updated: WorkOrder[] = workOrders.map((wo): WorkOrder => {
       if (wo.id === woId) {
         const currentIndex = WORKFLOW_STEPS.findIndex(s => s.id === wo.status);
         if (currentIndex < WORKFLOW_STEPS.length - 1) {
@@ -35,24 +58,37 @@ const WorkOrders: React.FC = () => {
         }
       }
       return wo;
-    }));
+    });
+    setWorkOrders(updated);
+    if (masterData.googleSheetsUrl) handleSync();
   };
 
+  // Added explicit return type to map to fix status type widening error.
   const handleRework = (woId: string) => {
-     setWorkOrders(prev => prev.map(wo => {
+    const updated: WorkOrder[] = workOrders.map((wo): WorkOrder => {
       if (wo.id === woId) return { ...wo, status: 'MR Generated' };
       return wo;
-    }));
+    });
+    setWorkOrders(updated);
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4 bg-green-50 p-4 rounded-2xl border border-green-100">
-        <div className="text-3xl">🌾</div>
-        <div>
-          <h3 className="text-sm font-black text-green-800 uppercase tracking-tight">Agricultural Fleet Operations</h3>
-          <p className="text-xs text-green-700">ERP-integrated maintenance workflow for farm equipment and machinery.</p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-4 bg-green-50 p-4 rounded-2xl border border-green-100 flex-1">
+          <div className="text-3xl">🌾</div>
+          <div>
+            <h3 className="text-sm font-black text-green-800 uppercase tracking-tight">Agricultural Fleet Operations</h3>
+            <p className="text-xs text-green-700">ERP-integrated maintenance workflow for farm equipment.</p>
+          </div>
         </div>
+        <button 
+          disabled={isSyncing}
+          onClick={handleSync}
+          className="px-6 py-3 bg-[#0F9D58] text-white rounded-xl text-sm font-bold shadow-lg shadow-green-500/20 hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50 h-fit"
+        >
+          {isSyncing ? '⏳ Syncing...' : '☁️ Sync Sheets'}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -105,7 +141,6 @@ const WorkOrders: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ERP Step Tracker */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 mb-8">
                     {WORKFLOW_STEPS.map((step, idx) => {
                       const isPast = idx < currentStepIndex;
@@ -191,14 +226,6 @@ const WorkOrders: React.FC = () => {
           );
         })}
       </div>
-
-      {workOrders.length === 0 && (
-        <div className="py-20 text-center text-slate-500 bg-white rounded-3xl border border-slate-200 border-dashed">
-          <p className="text-5xl mb-4">🚜</p>
-          <p className="font-black uppercase tracking-widest text-sm text-slate-400">Agricultural Fleet Registry Clear</p>
-          <p className="text-xs mt-1">No active maintenance requests in the ERP queue.</p>
-        </div>
-      )}
     </div>
   );
 };
