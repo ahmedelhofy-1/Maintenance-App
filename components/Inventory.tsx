@@ -90,7 +90,7 @@ const Inventory: React.FC = () => {
           </button>
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 hover:bg-slate-900 transition-all flex items-center gap-2"
+            className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-slate-900 transition-all flex items-center gap-2"
           >
             <span>📄</span> Bulk Upload
           </button>
@@ -117,8 +117,10 @@ const Inventory: React.FC = () => {
               <tr className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                 <th className="px-6 py-4">Part ID</th>
                 <th className="px-6 py-4">Part Name</th>
-                <th className="px-6 py-4">Stock Status</th>
-                <th className="px-6 py-4">Storage Location</th>
+                <th className="px-6 py-4">Current Stock</th>
+                <th className="px-6 py-4">Min Level</th>
+                <th className="px-6 py-4">Max Level</th>
+                <th className="px-6 py-4">Location</th>
                 <th className="px-6 py-4">Unit Cost</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
@@ -127,7 +129,9 @@ const Inventory: React.FC = () => {
               {filteredParts.map((part) => (
                 <tr key={part.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4">
-                    <span className="text-[10px] font-mono text-slate-500 font-bold uppercase">{part.id}</span>
+                    <span className="text-[10px] font-mono text-slate-600 font-black uppercase bg-slate-100 px-2 py-1 rounded">
+                      {part.id}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="font-bold text-slate-900">{part.name}</div>
@@ -136,13 +140,21 @@ const Inventory: React.FC = () => {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <div className={`w-2.5 h-2.5 rounded-full ${part.stock <= part.minStock ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
-                      <span className="font-black text-slate-900">{part.stock} / {part.maxStock} {part.unit}</span>
+                      <span className="font-black text-slate-900">{part.stock} <span className="text-slate-400 font-bold">{part.unit}</span></span>
                     </div>
-                    {part.stock <= part.minStock ? (
-                      <div className="text-[9px] font-black text-red-500 uppercase mt-0.5 tracking-tighter">REORDER POINT REACHED (Min: {part.minStock})</div>
-                    ) : part.stock >= part.maxStock ? (
-                       <div className="text-[9px] font-black text-blue-500 uppercase mt-0.5 tracking-tighter">FULL CAPACITY (Max: {part.maxStock})</div>
-                    ) : null}
+                    {part.stock <= part.minStock && (
+                      <div className="text-[9px] font-black text-red-500 uppercase mt-0.5 tracking-tighter">REORDER POINT REACHED</div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-xs font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                      {part.minStock} {part.unit}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-xs font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                      {part.maxStock} {part.unit}
+                    </span>
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-slate-600">
                     <span className="opacity-60 mr-1">📍</span> {part.location}
