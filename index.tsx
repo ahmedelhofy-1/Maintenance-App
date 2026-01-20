@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
@@ -31,29 +32,51 @@ const ErrorFallback = ({ error }: { error: Error }) => (
   </div>
 );
 
-class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
-  constructor(props: { children: React.ReactNode }) {
+// Define explicit interfaces for class component props and state
+interface GlobalErrorBoundaryProps {
+  children?: ReactNode;
+}
+
+interface GlobalErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+// Fix: Use the named Component import directly to ensure 'props' and 'state' are correctly resolved by TypeScript
+class GlobalErrorBoundary extends Component<GlobalErrorBoundaryProps, GlobalErrorBoundaryState> {
+  // Fix: Explicitly declare the state property on the class with the correct generic type
+  public state: GlobalErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
+
+  // Fix: Ensure the constructor correctly passes props to super
+  constructor(props: GlobalErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error) {
+  // Fix: Correct static method return type for state updates on error
+  static getDerivedStateFromError(error: Error): GlobalErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: any) {
+  // Fix: Use standard ErrorInfo type for robust error handling
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Critical Render Error:", error, errorInfo);
   }
 
   render() {
-    if (this.state.hasError && this.state.error) {
-      return <ErrorFallback error={this.state.error} />;
+    // Fix: Correctly accessing state and props from 'this' now that base class generics are correctly applied
+    const { hasError, error } = this.state;
+    if (hasError && error) {
+      return <ErrorFallback error={error} />;
     }
     return this.props.children;
   }
 }
 
 const root = ReactDOM.createRoot(rootElement);
+// Fix: Providing nested children correctly fulfills the ErrorBoundaryProps requirements
 root.render(
   <React.StrictMode>
     <GlobalErrorBoundary>

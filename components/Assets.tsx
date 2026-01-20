@@ -1,12 +1,15 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { MOCK_ASSETS, fetchAssetHealthHistory } from '../constants';
-import { Asset, AssetStatus, MasterData } from '../types';
+import { Asset, AssetStatus, MasterData, PagePermissions } from '../types';
 import { syncToGoogleSheets } from '../services/syncService';
+import { downloadTemplate, templates } from '../services/templateService';
 
 interface AssetsProps {
   masterData: MasterData;
+  permissions: PagePermissions;
 }
 
 const HealthTrend: React.FC<{ assetId: string, currentHealth: number }> = ({ assetId, currentHealth }) => {
@@ -39,12 +42,20 @@ const HealthTrend: React.FC<{ assetId: string, currentHealth: number }> = ({ ass
   );
 };
 
-const Assets: React.FC<AssetsProps> = ({ masterData }) => {
-  const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
+const Assets: React.FC<AssetsProps> = ({ masterData, permissions }) => {
+  const [assets, setAssets] = useState<Asset[]>(() => {
+    const saved = localStorage.getItem('mx_assets');
+    return saved ? JSON.parse(saved) : MOCK_ASSETS;
+  });
+
   const [filter, setFilter] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('mx_assets', JSON.stringify(assets));
+  }, [assets]);
 
   const [formData, setFormData] = useState({
     name: masterData.assetTypes[0] || '',
@@ -61,22 +72,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
     imageFile: null as string | null
   });
 
-  const handleSync = async () => {
-    if (!masterData.googleSheetsUrl) {
-      alert("Configure Google Sheets URL in Master Data.");
-      return;
-    }
-    setIsSyncing(true);
-    try {
-      await syncToGoogleSheets(masterData.googleSheetsUrl, 'Assets', assets);
-      alert("Asset registry synced to cloud!");
-    } catch (err) {
-      alert("Sync failed.");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const filteredAssets = assets.filter(asset => 
     asset.name.toLowerCase().includes(filter.toLowerCase()) || 
     asset.id.toLowerCase().includes(filter.toLowerCase())
@@ -92,6 +87,7 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
   };
 
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!permissions.add) return;
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -117,17 +113,17 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
           nextService: new Date().toISOString().split('T')[0],
           imageUrl: `https://picsum.photos/seed/${Math.random()}/400/300`
         }));
-        setAssets([...newAssets, ...assets]);
+        setAssets(prev => [...newAssets, ...prev]);
       } catch (err) { alert("Import failed."); }
     };
     reader.readAsBinaryString(file);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = `AST-${Math.floor(100 + Math.random() * 900)}`;
-    setAssets([{ ...formData, id, lastService: '', nextService: '', imageUrl: formData.imageFile || `https://picsum.photos/seed/${id}/400/300` }, ...assets]);
-    setIsModalOpen(false);
+  const handleDelete = (id: string) => {
+    if (!permissions.delete) return;
+    if (confirm("Permanently remove this asset?")) {
+        setAssets(prev => prev.filter(a => a.id !== id));
+    }
   };
 
   return (
@@ -135,25 +131,28 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
       <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
         <div className="relative w-full md:w-96">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-          <input type="text" placeholder="Search assets..." className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input type="text" placeholder="Search assets..." className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl outline-none" value={filter} onChange={(e) => setFilter(e.target.value)} />
         </div>
         <div className="flex flex-wrap gap-3 w-full md:w-auto">
-          <button 
-            disabled={isSyncing}
-            onClick={handleSync}
-            className="px-4 py-2.5 bg-[#0F9D58] text-white rounded-xl text-sm font-bold shadow-lg shadow-green-500/20 hover:brightness-110 flex items-center gap-2 disabled:opacity-50"
-          >
-            {isSyncing ? '⏳ Syncing...' : '☁️ Sync Sheets'}
-          </button>
-          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold">📄 Bulk Import</button>
-          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
-          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold">+ Add Asset</button>
+          {permissions.add && (
+              <>
+                <div className="flex bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
+                    <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white text-sm font-bold hover:bg-slate-700 transition-all border-r border-slate-700">📄 Bulk Import</button>
+                    <button onClick={() => downloadTemplate(templates.assets, 'Asset_Registry')} className="px-3 py-2.5 text-slate-500 hover:text-blue-600 hover:bg-white transition-all text-xs font-black uppercase">📥</button>
+                </div>
+                <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
+                <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20">+ Add Asset</button>
+              </>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredAssets.map(asset => (
-          <div key={asset.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm group">
+          <div key={asset.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm group relative">
+            {permissions.delete && (
+                <button onClick={() => handleDelete(asset.id)} className="absolute top-4 left-4 z-10 p-2 bg-white/90 backdrop-blur rounded-lg shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500">🗑️</button>
+            )}
             <div className="relative h-48">
               <img src={asset.imageUrl} className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all" />
               <span className={`absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${getStatusColor(asset.status)}`}>
@@ -166,15 +165,9 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                 <span className="text-[10px] font-mono bg-slate-100 px-2 py-0.5 rounded uppercase">{asset.id}</span>
               </div>
               <p className="text-slate-400 text-[10px] font-bold uppercase mb-3">{asset.brand} • {asset.model}</p>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
-                    <span className="text-slate-400">Condition</span>
-                    <span className={asset.health > 80 ? 'text-green-600' : 'text-amber-600'}>{asset.health}%</span>
-                  </div>
-                  <HealthTrend assetId={asset.id} currentHealth={asset.health} />
-                </div>
-                <div className="bg-slate-50 p-3 rounded grid grid-cols-2 gap-2 text-[10px] font-bold uppercase text-slate-500">
+              <div>
+                <HealthTrend assetId={asset.id} currentHealth={asset.health} />
+                <div className="mt-4 bg-slate-50 p-3 rounded grid grid-cols-2 gap-2 text-[10px] font-bold uppercase text-slate-500">
                   <div>SN: <span className="text-slate-900">{asset.serialNo}</span></div>
                   <div>LOC: <span className="text-slate-900">{asset.location}</span></div>
                 </div>
@@ -183,23 +176,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
           </div>
         ))}
       </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-xl rounded-3xl shadow-2xl p-6">
-            <h2 className="text-xl font-black mb-6">New Asset Definition</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <input required placeholder="Name" className="p-2.5 border rounded-lg text-sm" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-                <input required placeholder="Serial No" className="p-2.5 border rounded-lg text-sm" value={formData.serialNo} onChange={e => setFormData({...formData, serialNo: e.target.value})} />
-              </div>
-              <input required placeholder="Location" className="w-full p-2.5 border rounded-lg text-sm" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
-              <button className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl mt-4">Register Asset</button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

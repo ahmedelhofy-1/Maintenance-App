@@ -1,7 +1,7 @@
 
 export type AssetStatus = 'Operational' | 'Down' | 'In Maintenance' | 'Restricted';
 export type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
-export type MaintenanceType = 'PM' | 'CM'; // Preventive vs Corrective
+export type MaintenanceType = 'PM' | 'CM';
 
 export type WorkOrderStatus = 
   | 'MR Generated' 
@@ -12,13 +12,41 @@ export type WorkOrderStatus =
   | 'Closing' 
   | 'Completed';
 
+export interface PagePermissions {
+  read: boolean;
+  add: boolean;
+  edit: boolean;
+  delete: boolean;
+}
+
+export type ModuleKey = 'dashboard' | 'assets' | 'workorders' | 'inventory' | 'requests' | 'annual' | 'ai' | 'masterdata';
+
+export interface Role {
+  id: string;
+  name: string;
+  permissions: Record<ModuleKey, PagePermissions>;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  jobTitle: string;
+  roleId: string;
+  password?: string; // New field for authentication
+}
+
 export interface MasterData {
   departments: string[];
   brands: string[];
   assetTypes: string[];
   powerRatings: string[];
   years: string[];
-  googleSheetsUrl?: string; // Integration URL
+  parts: Part[];
+  users: User[];
+  roles: Role[];
+  googleSheetsUrl?: string;
 }
 
 export interface Asset {

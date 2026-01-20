@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 // Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 // Initialize the AI client inside the functions to ensure it uses the latest API key environment variable.
@@ -10,8 +10,9 @@ export const troubleshootAsset = async (issueDescription: string, assetType: str
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+    // Fix: Upgraded to gemini-3-pro-preview for advanced troubleshooting reasoning and added GenerateContentResponse type
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
       contents: `I am an expert industrial maintenance engineer. 
       A user reports the following issue with a ${assetType}: "${issueDescription}".
       Provide a structured response including:
@@ -40,7 +41,8 @@ export const analyzeMaintenanceImage = async (base64Image: string, assetName: st
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
-    const response = await ai.models.generateContent({
+    // Fix: vision-to-text analysis remains on gemini-3-flash-preview for speed and efficiency
+    const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
         parts: [

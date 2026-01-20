@@ -17,7 +17,7 @@ export const syncToGoogleSheets = async (url: string, dataType: string, data: an
     };
 
     // Google Apps Script Web Apps often require 'no-cors' to avoid preflight (OPTIONS) blocks.
-    // We send as a simple POST with text/plain which GAS can read from e.postData.contents.
+    // Note: 'no-cors' mode won't allow us to see the response body, but the data will be sent.
     await fetch(url, {
       method: 'POST',
       mode: 'no-cors',
@@ -27,10 +27,29 @@ export const syncToGoogleSheets = async (url: string, dataType: string, data: an
       body: JSON.stringify(payload)
     });
 
-    // In 'no-cors' mode, the response is opaque. We assume success if no error is thrown by fetch.
     return true;
   } catch (error) {
     console.error("Sync Service Error:", error);
+    throw error;
+  }
+};
+
+export const fetchFromGoogleSheets = async (url: string, dataType: string) => {
+  if (!url) {
+    throw new Error("Google Sheets Web App URL is not configured.");
+  }
+
+  // We append the type as a query parameter for doGet
+  const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}type=${dataType}`;
+
+  try {
+    const response = await fetch(fetchUrl);
+    if (!response.ok) throw new Error("Failed to fetch from Google Sheets.");
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Fetch Service Error:", error);
     throw error;
   }
 };

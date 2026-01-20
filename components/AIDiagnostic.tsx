@@ -2,8 +2,13 @@
 import React, { useState, useRef } from 'react';
 import { troubleshootAsset, analyzeMaintenanceImage } from '../services/geminiService';
 import { MOCK_ASSETS } from '../constants';
+import { PagePermissions } from '../types';
 
-const AIDiagnostic: React.FC = () => {
+interface AIDiagnosticProps {
+  permissions: PagePermissions;
+}
+
+const AIDiagnostic: React.FC<AIDiagnosticProps> = ({ permissions }) => {
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [issue, setIssue] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -92,8 +97,8 @@ const AIDiagnostic: React.FC = () => {
           <div className="space-y-4">
             <label className="block text-sm font-semibold text-slate-700 mb-2">Attachment (Photo of defect)</label>
             <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-200 rounded-2xl h-64 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors overflow-hidden group relative"
+              onClick={() => permissions.add && fileInputRef.current?.click()}
+              className={`border-2 border-dashed border-slate-200 rounded-2xl h-64 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors overflow-hidden group relative ${!permissions.add ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {capturedImage ? (
                 <>
