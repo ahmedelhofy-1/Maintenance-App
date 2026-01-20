@@ -47,10 +47,12 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
   }, [masterData, editingAssetId]);
 
   const filteredAssets = assets.filter(asset => {
+    const searchTerm = filter.toLowerCase();
+    // Use String() wrapper to prevent "toLowerCase is not a function" if field is numeric from Excel
     const matchesSearch = 
-      asset.name.toLowerCase().includes(filter.toLowerCase()) || 
-      asset.id.toLowerCase().includes(filter.toLowerCase()) ||
-      asset.serialNo.toLowerCase().includes(filter.toLowerCase());
+      String(asset.name || '').toLowerCase().includes(searchTerm) || 
+      String(asset.id || '').toLowerCase().includes(searchTerm) ||
+      String(asset.serialNo || '').toLowerCase().includes(searchTerm);
     const matchesStatus = statusFilter === 'All' || asset.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -147,15 +149,15 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
           
           return {
             id,
-            name: row['Asset Name'] || masterData.assetTypes[0],
-            department: row['Department'] || masterData.departments[0],
-            brand: row['Brand'] || masterData.brands[0],
-            model: row['Model'] || 'N/A',
-            yearModel: String(row['Year']) || '2025',
-            location: row['Location'] || 'Storage',
+            name: String(row['Asset Name'] || masterData.assetTypes[0]),
+            department: String(row['Department'] || masterData.departments[0]),
+            brand: String(row['Brand'] || masterData.brands[0]),
+            model: String(row['Model'] || 'N/A'),
+            yearModel: String(row['Year'] || '2025'),
+            location: String(row['Location'] || 'Storage'),
             status: (row['Status'] as AssetStatus) || 'Operational',
-            power: row['Power Rating'] || masterData.powerRatings[0],
-            serialNo: row['Serial No'] || `SN-${id}`,
+            power: String(row['Power Rating'] || masterData.powerRatings[0]),
+            serialNo: String(row['Serial No'] || `SN-${id}`),
             health: parseInt(row['Health (0-100)']) || 100,
             category: 'Imported',
             lastService: now,
