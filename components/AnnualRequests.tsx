@@ -75,9 +75,13 @@ const AnnualRequests: React.FC = () => {
   };
 
   const flattenedItems = requests.flatMap(req => 
-    req.items.map(item => {
+    (req.items || []).map(item => {
       const part = MOCK_PARTS.find(p => p.id === item.partId);
-      const stockInLoc = part?.location.toLowerCase().includes(req.storeLocation.toLowerCase()) ? part.stock : 0;
+      
+      const partLoc = (part?.location || '').toLowerCase();
+      const targetLoc = (req.storeLocation || '').toLowerCase();
+      
+      const stockInLoc = (partLoc && targetLoc && partLoc.includes(targetLoc)) ? (part?.stock || 0) : 0;
       const totalStock = part?.stock || 0;
 
       return {
@@ -97,9 +101,9 @@ const AnnualRequests: React.FC = () => {
   );
 
   const filteredItems = flattenedItems.filter(item => 
-    item.partName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.partId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.requestId.toLowerCase().includes(searchTerm.toLowerCase())
+    (item.partName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (item.partId || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (item.requestId || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   return (
