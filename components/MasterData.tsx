@@ -1,9 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import * as XLSX from 'xlsx';
-import { MasterData, Part, User, Role, PagePermissions, ModuleKey } from '../types';
-import { syncToGoogleSheets, fetchFromGoogleSheets } from '../services/syncService';
-import { downloadTemplate, templates } from '../services/templateService';
+import React, { useState, useRef } from 'react';
+import { MasterData, User, PagePermissions, ModuleKey } from '../types';
 
 interface MasterDataEditorProps {
   masterData: MasterData;
@@ -15,10 +12,18 @@ type CategoryKey = keyof MasterData | 'integration' | 'parts' | 'users' | 'acces
 
 const MasterDataEditor: React.FC<MasterDataEditorProps> = ({ masterData, onUpdate, permissions }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('departments');
-  const [newItemValue, setNewItemValue] = useState('');
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [userFormData, setUserFormData] = useState<Partial<User>>({
+    id: '',
+    name: '',
+    email: '',
+    mobile: '',
+    jobTitle: '',
+    roleId: masterData.roles[0]?.id || '',
+    password: 'password123'
+  });
 
   const categories: { key: CategoryKey; label: string; icon: string }[] = [
     { key: 'departments', label: 'Departments', icon: '🏢' },
@@ -43,12 +48,70 @@ const MasterDataEditor: React.FC<MasterDataEditorProps> = ({ masterData, onUpdat
     onUpdate({ ...masterData, roles: updatedRoles });
   };
 
+  const handleAddUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userFormData.id || !userFormData.name || !userFormData.email) {
+      alert("Please fill in ID, Name, and Email.");
+      return;
+    }
+
+    if (masterData.users.some(u => u.id === userFormData.id)) {
+      alert("User ID already exists.");
+      return;
+    }
+
+    const newUser: User = {
+      id: userFormData.id as string,
+      name: userFormData.name as string,
+      email: userFormData.email as string,
+      mobile: userFormData.mobile || '',
+      jobTitle: userFormData.jobTitle || '',
+      roleId: userFormData.roleId as string,
+      password: userFormData.password || 'password123'
+    };
+
+    onUpdate({
+      ...masterData,
+      users: [...masterData.users, newUser]
+    });
+
+    setIsUserModalOpen(false);
+    setUserFormData({
+      id: '',
+      name: '',
+      email: '',
+      mobile: '',
+      jobTitle: '',
+      roleId: masterData.roles[0]?.id || '',
+      password: 'password123'
+    });
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    if (!permissions.delete) return;
+    if (userId === 'Admin') {
+      alert("The primary Admin account cannot be deleted.");
+      return;
+    }
+    if (confirm(`Are you sure you want to remove user ${userId}?`)) {
+      onUpdate({
+        ...masterData,
+        users: masterData.users.filter(u => u.id !== userId)
+      });
+    }
+  };
+
   const renderUserDirectory = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Authorized Personnel</h3>
         {permissions.add && (
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold">+ Add Staff</button>
+            <button 
+              onClick={() => setIsUserModalOpen(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/20"
+            >
+              + Add Staff
+            </button>
         )}
       </div>
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -80,14 +143,111 @@ const MasterDataEditor: React.FC<MasterDataEditorProps> = ({ masterData, onUpdat
                             </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                            <button className="text-slate-300 hover:text-blue-600 mr-2">✏️</button>
-                            <button className="text-slate-300 hover:text-red-500">🗑️</button>
+                            {permissions.delete && (
+                              <button 
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="text-slate-300 hover:text-red-500 transition-colors"
+                                title="Delete User"
+                              >
+                                🗑️
+                              </button>
+                            )}
                         </td>
                     </tr>
                 ))}
             </tbody>
         </table>
       </div>
+
+      {isUserModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+              <h3 className="text-xl font-black text-slate-900 uppercase">New Staff Member</h3>
+              <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={handleAddUser} className="p-8 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 ml-1">Employee ID</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="EMP-001"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                    value={userFormData.id}
+                    onChange={e => setUserFormData({...userFormData, id: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 ml-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="John Doe"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                    value={userFormData.name}
+                    onChange={e => setUserFormData({...userFormData, name: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 ml-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="j.doe@example.com"
+                  className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                  value={userFormData.email}
+                  onChange={e => setUserFormData({...userFormData, email: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 ml-1">Job Title</label>
+                  <input
+                    type="text"
+                    placeholder="Mechanic"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                    value={userFormData.jobTitle}
+                    onChange={e => setUserFormData({...userFormData, jobTitle: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 ml-1">System Role</label>
+                  <select
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                    value={userFormData.roleId}
+                    onChange={e => setUserFormData({...userFormData, roleId: e.target.value})}
+                  >
+                    {masterData.roles.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 ml-1">Initial Password</label>
+                <input
+                  type="text"
+                  placeholder="password123"
+                  className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                  value={userFormData.password}
+                  onChange={e => setUserFormData({...userFormData, password: e.target.value})}
+                />
+              </div>
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-500/20"
+                >
+                  Confirm Registration
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 

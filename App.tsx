@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import Assets from './components/Assets';
 import AIDiagnostic from './components/AIDiagnostic';
 import WorkOrders from './components/WorkOrders';
+import Approvals from './components/Approvals';
 import MasterDataEditor from './components/MasterData';
 import Inventory from './components/Inventory';
 import PartsRequests from './components/PartsRequests';
@@ -25,6 +26,7 @@ const DEFAULT_ROLES: Role[] = [
       dashboard: createPermissions(true, true, true, true),
       assets: createPermissions(true, true, true, true),
       workorders: createPermissions(true, true, true, true),
+      approvals: createPermissions(true, true, true, true),
       inventory: createPermissions(true, true, true, true),
       requests: createPermissions(true, true, true, true),
       annual: createPermissions(true, true, true, true),
@@ -39,6 +41,7 @@ const DEFAULT_ROLES: Role[] = [
       dashboard: createPermissions(true, true, true, true),
       assets: createPermissions(true, true, true, true),
       workorders: createPermissions(true, true, true, true),
+      approvals: createPermissions(true, true, true, true),
       inventory: createPermissions(true, true, true, false),
       requests: createPermissions(true, true, true, true),
       annual: createPermissions(true, true, true, true),
@@ -52,7 +55,8 @@ const DEFAULT_ROLES: Role[] = [
     permissions: {
       dashboard: createPermissions(true, false, false, false),
       assets: createPermissions(true, false, false, false),
-      workorders: createPermissions(true, false, true, false),
+      workorders: createPermissions(true, true, true, false),
+      approvals: createPermissions(true, false, false, false),
       inventory: createPermissions(true, false, false, false),
       requests: createPermissions(true, true, false, false),
       annual: createPermissions(false, false, false, false),
@@ -157,7 +161,9 @@ const App: React.FC = () => {
       case 'assets':
         return <Assets masterData={masterData} permissions={permissions} />;
       case 'workorders':
-        return <WorkOrders masterData={masterData} permissions={permissions} />;
+        return <WorkOrders masterData={masterData} permissions={permissions} setActiveTab={setActiveTab} />;
+      case 'approvals':
+        return <Approvals masterData={masterData} permissions={permissions} />;
       case 'inventory':
         return <Inventory masterData={masterData} permissions={permissions} />;
       case 'requests':

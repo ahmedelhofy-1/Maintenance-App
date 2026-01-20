@@ -30,6 +30,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'assets', label: 'Assets', icon: '🏭' },
     { id: 'workorders', label: 'Work Orders', icon: '📝' },
+    { id: 'approvals', label: 'Approval Hub', icon: '⚖️' },
     { id: 'inventory', label: 'Inventory', icon: '📦' },
     { id: 'requests', label: 'Parts Requests', icon: '📥' },
     { id: 'annual', label: 'Annual Planning', icon: '📅' },

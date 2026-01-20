@@ -4,8 +4,6 @@ import * as XLSX from 'xlsx';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { MOCK_ASSETS, fetchAssetHealthHistory } from '../constants';
 import { Asset, AssetStatus, MasterData, PagePermissions } from '../types';
-import { syncToGoogleSheets } from '../services/syncService';
-import { downloadTemplate, templates } from '../services/templateService';
 
 interface AssetsProps {
   masterData: MasterData;
@@ -50,7 +48,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData, permissions }) => {
 
   const [filter, setFilter] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -58,8 +55,8 @@ const Assets: React.FC<AssetsProps> = ({ masterData, permissions }) => {
   }, [assets]);
 
   const [formData, setFormData] = useState({
-    name: masterData.assetTypes[0] || '',
-    category: 'Production',
+    name: '',
+    category: 'General',
     department: masterData.departments[0] || '',
     brand: masterData.brands[0] || '',
     model: '',
@@ -68,8 +65,7 @@ const Assets: React.FC<AssetsProps> = ({ masterData, permissions }) => {
     status: 'Operational' as AssetStatus,
     power: masterData.powerRatings[0] || '',
     serialNo: '',
-    health: 100,
-    imageFile: null as string | null
+    imageUrl: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400'
   });
 
   const filteredAssets = assets.filter(asset => 
@@ -84,6 +80,38 @@ const Assets: React.FC<AssetsProps> = ({ masterData, permissions }) => {
       case 'In Maintenance': return 'bg-amber-100 text-amber-700';
       default: return 'bg-slate-100 text-slate-700';
     }
+  };
+
+  const handleAddAsset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.serialNo) {
+      alert("Asset Name and Serial Number are required.");
+      return;
+    }
+
+    const newAsset: Asset = {
+      ...formData,
+      id: `AST-${Math.floor(1000 + Math.random() * 9000)}`,
+      lastService: new Date().toISOString().split('T')[0],
+      nextService: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      health: 100,
+    };
+
+    setAssets([newAsset, ...assets]);
+    setIsModalOpen(false);
+    setFormData({
+      name: '',
+      category: 'General',
+      department: masterData.departments[0] || '',
+      brand: masterData.brands[0] || '',
+      model: '',
+      yearModel: masterData.years[0] || '2025',
+      location: '',
+      status: 'Operational',
+      power: masterData.powerRatings[0] || '',
+      serialNo: '',
+      imageUrl: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400'
+    });
   };
 
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,7 +166,7 @@ const Assets: React.FC<AssetsProps> = ({ masterData, permissions }) => {
               <>
                 <div className="flex bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
                     <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white text-sm font-bold hover:bg-slate-700 transition-all border-r border-slate-700">📄 Bulk Import</button>
-                    <button onClick={() => downloadTemplate(templates.assets, 'Asset_Registry')} className="px-3 py-2.5 text-slate-500 hover:text-blue-600 hover:bg-white transition-all text-xs font-black uppercase">📥</button>
+                    <button onClick={() => alert("Template download coming soon")} className="px-3 py-2.5 text-slate-500 hover:text-blue-600 hover:bg-white transition-all text-xs font-black uppercase">📥</button>
                 </div>
                 <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
                 <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20">+ Add Asset</button>
@@ -176,6 +204,135 @@ const Assets: React.FC<AssetsProps> = ({ masterData, permissions }) => {
           </div>
         ))}
       </div>
+
+      {/* Add Asset Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+            <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 uppercase">Register New Asset</h3>
+                <p className="text-sm text-slate-500">Add industrial equipment to the facility registry.</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">✕ Close</button>
+            </div>
+            
+            <form onSubmit={handleAddAsset} className="p-8 overflow-y-auto space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Asset Name / Title</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Centrifugal Pump 4"
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Department</label>
+                    <select
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.department}
+                      onChange={e => setFormData({...formData, department: e.target.value})}
+                    >
+                      {masterData.departments.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Brand</label>
+                    <select
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.brand}
+                      onChange={e => setFormData({...formData, brand: e.target.value})}
+                    >
+                      {masterData.brands.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Model / Series</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. XP-500"
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.model}
+                      onChange={e => setFormData({...formData, model: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Serial Number (S/N)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. SN-998822"
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.serialNo}
+                      onChange={e => setFormData({...formData, serialNo: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Location / Zone</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Floor 2 - Sector B"
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.location}
+                      onChange={e => setFormData({...formData, location: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Power Rating</label>
+                    <select
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.power}
+                      onChange={e => setFormData({...formData, power: e.target.value})}
+                    >
+                      {masterData.powerRatings.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Asset Status</label>
+                    <select
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                      value={formData.status}
+                      onChange={e => setFormData({...formData, status: e.target.value as AssetStatus})}
+                    >
+                      <option value="Operational">Operational</option>
+                      <option value="Down">Down (Fault)</option>
+                      <option value="In Maintenance">In Maintenance</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Preview Image URL</label>
+                <input
+                  type="text"
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                  value={formData.imageUrl}
+                  onChange={e => setFormData({...formData, imageUrl: e.target.value})}
+                />
+              </div>
+
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98]"
+                >
+                  Confirm Registration
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

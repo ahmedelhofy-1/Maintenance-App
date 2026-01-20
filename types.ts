@@ -19,7 +19,7 @@ export interface PagePermissions {
   delete: boolean;
 }
 
-export type ModuleKey = 'dashboard' | 'assets' | 'workorders' | 'inventory' | 'requests' | 'annual' | 'ai' | 'masterdata';
+export type ModuleKey = 'dashboard' | 'assets' | 'workorders' | 'approvals' | 'inventory' | 'requests' | 'annual' | 'ai' | 'masterdata';
 
 export interface Role {
   id: string;
@@ -67,6 +67,14 @@ export interface Asset {
   imageUrl?: string;
 }
 
+export interface ApprovalEntry {
+  status: WorkOrderStatus;
+  action: 'Approved' | 'Rejected';
+  by: string;
+  date: string;
+  notes?: string;
+}
+
 export interface WorkOrder {
   id: string;
   title: string;
@@ -84,6 +92,8 @@ export interface WorkOrder {
   totalCost?: number;
   photosAttached?: string[];
   sensorReadings?: string;
+  rejectionNotes?: string;
+  approvalHistory?: ApprovalEntry[];
 }
 
 export interface Part {
