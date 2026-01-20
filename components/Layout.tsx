@@ -15,6 +15,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
     { id: 'assets', label: 'Assets', icon: '🏭' },
     { id: 'workorders', label: 'Work Orders', icon: '📝' },
     { id: 'ai', label: 'AI Diagnostic', icon: '🤖' },
+    { id: 'masterdata', label: 'Master Data', icon: '⚙️' },
   ];
 
   return (
@@ -72,9 +73,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
             <button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full">
               🔔
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-            </button>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors">
-              + New Work Order
             </button>
           </div>
         </header>

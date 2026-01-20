@@ -1,15 +1,51 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MOCK_ASSETS } from '../constants';
-import { AssetStatus } from '../types';
+import { Asset, AssetStatus, MasterData } from '../types';
 
-const Assets: React.FC = () => {
+interface AssetsProps {
+  masterData: MasterData;
+}
+
+const Assets: React.FC<AssetsProps> = ({ masterData }) => {
+  const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
   const [filter, setFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const filteredAssets = MOCK_ASSETS.filter(asset => {
-    const matchesSearch = asset.name.toLowerCase().includes(filter.toLowerCase()) || 
-                         asset.id.toLowerCase().includes(filter.toLowerCase());
+  // Form State
+  const [newAsset, setNewAsset] = useState({
+    name: masterData.assetTypes[0] || '',
+    category: 'Production',
+    department: masterData.departments[0] || '',
+    brand: masterData.brands[0] || '',
+    model: '',
+    yearModel: masterData.years[0] || '2025',
+    location: '',
+    status: 'Operational' as AssetStatus,
+    power: masterData.powerRatings[0] || '',
+    serialNo: '',
+    health: 100,
+    imageFile: null as string | null
+  });
+
+  // Update form defaults if master data changes
+  useEffect(() => {
+    setNewAsset(prev => ({
+      ...prev,
+      name: prev.name || masterData.assetTypes[0] || '',
+      department: prev.department || masterData.departments[0] || '',
+      brand: prev.brand || masterData.brands[0] || '',
+      power: prev.power || masterData.powerRatings[0] || '',
+      yearModel: prev.yearModel || masterData.years[0] || '2025',
+    }));
+  }, [masterData]);
+
+  const filteredAssets = assets.filter(asset => {
+    const matchesSearch = 
+      asset.name.toLowerCase().includes(filter.toLowerCase()) || 
+      asset.id.toLowerCase().includes(filter.toLowerCase()) ||
+      asset.serialNo.toLowerCase().includes(filter.toLowerCase());
     const matchesStatus = statusFilter === 'All' || asset.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -24,6 +60,49 @@ const Assets: React.FC = () => {
     }
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewAsset({ ...newAsset, imageFile: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = `AST-${Math.floor(100 + Math.random() * 900)}`;
+    const now = new Date().toISOString().split('T')[0];
+    
+    const assetToAdd: Asset = {
+      ...newAsset,
+      id,
+      lastService: now,
+      nextService: new Date(Date.now() + 7776000000).toISOString().split('T')[0],
+      imageUrl: newAsset.imageFile || `https://picsum.photos/seed/${id}/400/300`
+    };
+
+    setAssets([assetToAdd, ...assets]);
+    setIsModalOpen(false);
+    // Reset to current master data defaults
+    setNewAsset({
+      name: masterData.assetTypes[0],
+      category: 'Production',
+      department: masterData.departments[0],
+      brand: masterData.brands[0],
+      model: '',
+      yearModel: masterData.years[0],
+      location: '',
+      status: 'Operational',
+      power: masterData.powerRatings[0],
+      serialNo: '',
+      health: 100,
+      imageFile: null
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
@@ -31,56 +110,61 @@ const Assets: React.FC = () => {
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
           <input
             type="text"
-            placeholder="Search assets by name or ID..."
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            placeholder="Search by name, ID or Serial No..."
+            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-          {['All', 'Operational', 'Down', 'In Maintenance'].map(status => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                statusFilter === status 
-                  ? 'bg-blue-600 text-white shadow-md' 
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {status}
-            </button>
-          ))}
+        <div className="flex gap-3 w-full md:w-auto">
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+            <span>+</span> Add New Asset
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredAssets.map(asset => (
-          <div key={asset.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
-            <div className="relative h-48">
-              <img src={asset.imageUrl} alt={asset.name} className="w-full h-full object-cover" />
-              <span className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-bold shadow-sm ${getStatusColor(asset.status)}`}>
+          <div key={asset.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <div className="relative h-48 group">
+              <img src={asset.imageUrl} alt={asset.name} className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className={`absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm ${getStatusColor(asset.status)}`}>
                 {asset.status}
               </span>
             </div>
             <div className="p-6">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="font-bold text-slate-900 text-lg leading-tight">{asset.name}</h3>
-                <span className="text-xs font-mono text-slate-400">{asset.id}</span>
+              <div className="flex justify-between items-start mb-1">
+                <h3 className="font-bold text-slate-900 text-lg leading-tight truncate">{asset.name}</h3>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-slate-100 rounded text-slate-500 uppercase">{asset.id}</span>
               </div>
-              <p className="text-slate-500 text-sm mb-4">📍 {asset.location}</p>
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-3">
+                {asset.brand} • {asset.model}
+              </p>
               
+              <div className="flex items-center gap-4 mb-4">
+                 <p className="text-slate-500 text-[11px] font-medium flex items-center gap-1">
+                  <span className="opacity-70">📍</span> {asset.location}
+                </p>
+                <p className="text-slate-500 text-[11px] font-medium flex items-center gap-1">
+                  <span className="opacity-70">🏢</span> {asset.department}
+                </p>
+              </div>
+
               <div className="space-y-4">
                 <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span className="text-slate-500">Asset Health</span>
+                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
+                    <span className="text-slate-400">System Health</span>
                     <span className={`${asset.health > 80 ? 'text-green-600' : asset.health > 40 ? 'text-amber-600' : 'text-red-600'}`}>
                       {asset.health}%
                     </span>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <div 
-                      className={`h-full rounded-full transition-all duration-500 ${
+                      className={`h-full rounded-full transition-all duration-700 ${
                         asset.health > 80 ? 'bg-green-500' : asset.health > 40 ? 'bg-amber-500' : 'bg-red-500'
                       }`}
                       style={{ width: `${asset.health}%` }}
@@ -88,25 +172,177 @@ const Assets: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-xs font-medium">
-                  <div className="bg-slate-50 p-3 rounded-xl">
-                    <p className="text-slate-400 mb-1 uppercase tracking-wider">Last Service</p>
-                    <p className="text-slate-700">{asset.lastService}</p>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-xl">
-                    <p className="text-slate-400 mb-1 uppercase tracking-wider">Next Service</p>
-                    <p className="text-slate-700">{asset.nextService}</p>
-                  </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-slate-400">
+                  <div className="bg-slate-50 p-2 rounded">SN: <span className="text-slate-900">{asset.serialNo}</span></div>
+                  <div className="bg-slate-50 p-2 rounded">POWER: <span className="text-slate-900">{asset.power}</span></div>
                 </div>
               </div>
-              
-              <button className="w-full mt-6 border border-blue-600 text-blue-600 hover:bg-blue-50 font-semibold py-2 rounded-xl transition-colors text-sm">
-                View Maintenance Logs
-              </button>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Upload Asset Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+          <div className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">Technical Asset Definition</h2>
+                <p className="text-slate-500 text-xs">Choose from dynamic Master Data specifications.</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl font-light leading-none">&times;</button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[80vh]">
+              <div className="space-y-6">
+                {/* General Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Definition</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={newAsset.name}
+                      onChange={e => setNewAsset({...newAsset, name: e.target.value})}
+                    >
+                      {masterData.assetTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Department</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={newAsset.department}
+                      onChange={e => setNewAsset({...newAsset, department: e.target.value})}
+                    >
+                      {masterData.departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Brand & Model */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Brand</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={newAsset.brand}
+                      onChange={e => setNewAsset({...newAsset, brand: e.target.value})}
+                    >
+                      {masterData.brands.map(brand => <option key={brand} value={brand}>{brand}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Model</label>
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm"
+                      placeholder="Enter Model ID"
+                      value={newAsset.model}
+                      onChange={e => setNewAsset({...newAsset, model: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Year Model</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={newAsset.yearModel}
+                      onChange={e => setNewAsset({...newAsset, yearModel: e.target.value})}
+                    >
+                      {masterData.years.map(year => <option key={year} value={year}>{year}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Technical Specs */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Serial No (Unique)</label>
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm"
+                      placeholder="SN-XXXX-XXXX"
+                      value={newAsset.serialNo}
+                      onChange={e => setNewAsset({...newAsset, serialNo: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Power Rating</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={newAsset.power}
+                      onChange={e => setNewAsset({...newAsset, power: e.target.value})}
+                    >
+                      {masterData.powerRatings.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Status & Location */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Initial Status</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={newAsset.status}
+                      onChange={e => setNewAsset({...newAsset, status: e.target.value as AssetStatus})}
+                    >
+                      <option value="Operational">Operational</option>
+                      <option value="Down">Down</option>
+                      <option value="In Maintenance">In Maintenance</option>
+                      <option value="Restricted">Restricted</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Physical Location</label>
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm"
+                      placeholder="e.g. Bay 4, Shelf C"
+                      value={newAsset.location}
+                      onChange={e => setNewAsset({...newAsset, location: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                {/* Photo Upload */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Photo Evidence</label>
+                  <div 
+                    className="border-2 border-dashed border-slate-200 rounded-xl h-24 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-all relative overflow-hidden"
+                    onClick={() => document.getElementById('asset-photo')?.click()}
+                  >
+                    {newAsset.imageFile ? (
+                      <img src={newAsset.imageFile} className="w-full h-full object-cover" />
+                    ) : (
+                      <>
+                        <span className="text-xl mb-1">📸</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Attach Image</span>
+                      </>
+                    )}
+                    <input id="asset-photo" type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex gap-3 sticky bottom-0 bg-white pb-2">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg font-bold text-slate-600 hover:bg-slate-50 transition-all text-sm">Cancel</button>
+                  <button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 text-sm">Register Asset</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
