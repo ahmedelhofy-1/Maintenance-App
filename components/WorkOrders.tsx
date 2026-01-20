@@ -1,8 +1,7 @@
 
 import React, { useState } from 'react';
 import { MOCK_WORK_ORDERS, MOCK_ASSETS } from '../constants';
-import { WorkOrder, WorkOrderStatus, MaintenanceType, Priority, MasterData } from '../types';
-import { syncToGoogleSheets } from '../services/syncService';
+import { WorkOrder, WorkOrderStatus, MaintenanceType, Priority } from '../types';
 
 const WORKFLOW_STEPS: { id: WorkOrderStatus; label: string; icon: string; description: string }[] = [
   { id: 'MR Generated', label: 'Generate MR', icon: '🚜', description: 'Log Maintenance Request with Machine ID' },
@@ -14,41 +13,9 @@ const WORKFLOW_STEPS: { id: WorkOrderStatus; label: string; icon: string; descri
   { id: 'Completed', label: 'Finalized', icon: '✅', description: 'Continuous improvement data logged' },
 ];
 
-interface WorkOrdersProps {
-  masterData?: MasterData;
-}
-
-const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
+const WorkOrders: React.FC = () => {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>(MOCK_WORK_ORDERS);
-  const [isSyncing, setIsSyncing] = useState(false);
   
-  const handleSync = async (dataToSync: WorkOrder[] = workOrders) => {
-    if (!masterData?.googleSheetsUrl) {
-      alert("Please configure your Google Sheets URL in the Master Data tab.");
-      return;
-    }
-    setIsSyncing(true);
-    try {
-      const flattenedForSync = dataToSync.map(wo => ({
-        id: wo.id,
-        title: wo.title,
-        asset_id: wo.assetId,
-        priority: wo.priority,
-        status: wo.status,
-        type: wo.maintenanceType,
-        assigned_to: wo.assignedTo,
-        due_date: wo.dueDate,
-        is_operational: wo.isOperational ? 'YES' : 'NO'
-      }));
-      await syncToGoogleSheets(masterData.googleSheetsUrl, 'WorkOrders', flattenedForSync);
-      alert("Work order queue synced to Google Sheets!");
-    } catch (err) {
-      alert("Sync failed. Check cloud script status.");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const getPriorityStyles = (priority: Priority) => {
     switch (priority) {
       case 'Critical': return 'text-red-600 bg-red-100';
@@ -59,8 +26,7 @@ const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
   };
 
   const handleNextStep = (woId: string) => {
-    // Explicitly type 'updated' as WorkOrder[] to prevent 'status' from being widened to 'string'
-    const updated: WorkOrder[] = workOrders.map(wo => {
+    setWorkOrders(prev => prev.map(wo => {
       if (wo.id === woId) {
         const currentIndex = WORKFLOW_STEPS.findIndex(s => s.id === wo.status);
         if (currentIndex < WORKFLOW_STEPS.length - 1) {
@@ -69,38 +35,24 @@ const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
         }
       }
       return wo;
-    });
-    setWorkOrders(updated);
-    if (masterData?.googleSheetsUrl) handleSync(updated);
+    }));
   };
 
   const handleRework = (woId: string) => {
-     // Explicitly type 'updated' as WorkOrder[] to prevent 'status' from being widened to 'string'
-     const updated: WorkOrder[] = workOrders.map(wo => {
-      if (wo.id === woId) return { ...wo, status: 'MR Generated' as WorkOrderStatus };
+     setWorkOrders(prev => prev.map(wo => {
+      if (wo.id === woId) return { ...wo, status: 'MR Generated' };
       return wo;
-    });
-    setWorkOrders(updated);
-    if (masterData?.googleSheetsUrl) handleSync(updated);
+    }));
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex items-center gap-4 bg-green-50 p-4 rounded-2xl border border-green-100 flex-1">
-          <div className="text-3xl">🌾</div>
-          <div>
-            <h3 className="text-sm font-black text-green-800 uppercase tracking-tight">Fleet Operations Dashboard</h3>
-            <p className="text-xs text-green-700">Real-time maintenance workflow tracking.</p>
-          </div>
+      <div className="flex items-center gap-4 bg-green-50 p-4 rounded-2xl border border-green-100">
+        <div className="text-3xl">🌾</div>
+        <div>
+          <h3 className="text-sm font-black text-green-800 uppercase tracking-tight">Agricultural Fleet Operations</h3>
+          <p className="text-xs text-green-700">ERP-integrated maintenance workflow for farm equipment and machinery.</p>
         </div>
-        <button 
-          disabled={isSyncing}
-          onClick={() => handleSync()}
-          className="px-6 py-4 bg-[#0F9D58] text-white rounded-2xl text-sm font-bold shadow-lg shadow-green-500/20 transition-all flex items-center gap-3 disabled:opacity-50"
-        >
-          {isSyncing ? '⏳ Syncing...' : '☁️ Sync Work Orders'}
-        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -153,7 +105,7 @@ const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
                   </div>
                 </div>
 
-                {/* Step Tracker */}
+                {/* ERP Step Tracker */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 mb-8">
                     {WORKFLOW_STEPS.map((step, idx) => {
                       const isPast = idx < currentStepIndex;
@@ -174,14 +126,24 @@ const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500" /> Current Step
+                        <span className="w-2 h-2 rounded-full bg-blue-500" /> Current ERP Logic
                     </h4>
                     <p className="text-xs font-bold text-slate-800 mb-2">{WORKFLOW_STEPS[currentStepIndex].description}</p>
                     <div className="space-y-2">
+                        {wo.status === 'MR Generated' && (
+                            <div className="p-2 bg-blue-100/50 rounded-lg text-[10px] font-bold text-blue-700 uppercase">
+                                📋 Awaiting Manager Review Submission
+                            </div>
+                        )}
                         {wo.status === 'Parts Planning' && (
                             <div className={`p-2 rounded-lg text-[10px] font-bold uppercase ${wo.partsAvailable ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                {wo.partsAvailable ? '✅ Parts Reserved' : '⚠️ Triggering PR'}
+                                {wo.partsAvailable ? '✅ Parts Reserved in Store' : '⚠️ Triggering Purchase Requisition (PR)'}
                             </div>
+                        )}
+                        {wo.status === 'Execution' && (
+                             <div className="p-2 bg-indigo-100/50 rounded-lg text-[10px] font-bold text-indigo-700 uppercase">
+                                🛠️ Recording Tasks & Sensor Readings
+                             </div>
                         )}
                     </div>
                   </div>
@@ -189,27 +151,37 @@ const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
                   <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Resource Allocation</h4>
                     <div className="space-y-3">
-                        <div className="flex justify-between items-center text-[10px] font-bold">
-                            <span className="text-slate-400 uppercase tracking-widest">Technician</span>
-                            <span className="text-slate-900">{wo.assignedTo}</span>
+                        <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Technician</span>
+                            <span className="text-xs font-black text-slate-900">{wo.assignedTo}</span>
                         </div>
-                        <div className="flex justify-between items-center text-[10px] font-bold">
-                            <span className="text-slate-400 uppercase tracking-widest">Due Date</span>
-                            <span className="text-slate-900">{wo.dueDate}</span>
+                        <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Due Date</span>
+                            <span className="text-xs font-black text-slate-900">{wo.dueDate}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Logged Readings</span>
+                            <span className="text-xs font-black text-blue-600">{wo.sensorReadings || 'N/A'}</span>
                         </div>
                     </div>
                   </div>
 
                   <div className="bg-slate-900 p-5 rounded-2xl text-white">
-                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Costing</h4>
+                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Costing & Closure</h4>
                     <div className="space-y-4">
                         <div className="flex justify-between border-b border-slate-800 pb-2">
                             <span className="text-[10px] font-bold uppercase text-slate-400">Total Hours</span>
                             <span className="text-xs font-black">{wo.status === 'Completed' ? (wo.loggedHours || 4) : '--'} h</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex justify-between border-b border-slate-800 pb-2">
                             <span className="text-[10px] font-bold uppercase text-slate-400">Estimated Cost</span>
                             <span className="text-xs font-black text-green-400">${wo.status === 'Completed' ? (wo.totalCost || 1250) : '0.00'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <div className={`w-2 h-2 rounded-full ${wo.isOperational ? 'bg-green-500' : 'bg-red-500'}`} />
+                             <span className="text-[9px] font-black uppercase tracking-widest">
+                                {wo.isOperational ? 'Asset Operational' : 'Asset Shutdown'}
+                             </span>
                         </div>
                     </div>
                   </div>
@@ -219,6 +191,14 @@ const WorkOrders: React.FC<WorkOrdersProps> = ({ masterData }) => {
           );
         })}
       </div>
+
+      {workOrders.length === 0 && (
+        <div className="py-20 text-center text-slate-500 bg-white rounded-3xl border border-slate-200 border-dashed">
+          <p className="text-5xl mb-4">🚜</p>
+          <p className="font-black uppercase tracking-widest text-sm text-slate-400">Agricultural Fleet Registry Clear</p>
+          <p className="text-xs mt-1">No active maintenance requests in the ERP queue.</p>
+        </div>
+      )}
     </div>
   );
 };

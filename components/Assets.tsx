@@ -1,9 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { MOCK_ASSETS, fetchAssetHealthHistory } from '../constants';
 import { Asset, AssetStatus, MasterData } from '../types';
-import { syncToGoogleSheets } from '../services/syncService';
 
 interface AssetsProps {
   masterData: MasterData;
@@ -52,7 +52,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
   const [filter, setFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,22 +70,6 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
     health: 100,
     imageFile: null as string | null
   });
-
-  const handleSync = async (dataToSync: Asset[] = assets) => {
-    if (!masterData.googleSheetsUrl) {
-      alert("Please configure your Google Sheets URL in the Master Data > Cloud Sync tab first.");
-      return;
-    }
-    setIsSyncing(true);
-    try {
-      await syncToGoogleSheets(masterData.googleSheetsUrl, 'Assets', dataToSync);
-      alert("Asset registry successfully pushed to Google Sheet!");
-    } catch (err) {
-      alert("Sync failed. Ensure your script is deployed as a Web App.");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   useEffect(() => {
     if (!editingAssetId) {
@@ -220,14 +203,12 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
           };
         });
 
-        const updated = [...newAssetsList, ...assets];
-        setAssets(updated);
+        setAssets(prev => [...newAssetsList, ...prev]);
         alert(`Successfully imported ${newAssetsList.length} assets.`);
-        if (masterData.googleSheetsUrl) handleSync(updated);
         if (fileInputRef.current) fileInputRef.current.value = '';
       } catch (err) {
         console.error(err);
-        alert("Failed to parse Excel file.");
+        alert("Failed to parse Excel file. Please ensure you use the provided template.");
       }
     };
     reader.readAsBinaryString(file);
@@ -235,10 +216,9 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    let updatedAssets = [];
     
     if (editingAssetId) {
-      updatedAssets = assets.map(asset => {
+      setAssets(prev => prev.map(asset => {
         if (asset.id === editingAssetId) {
           return {
             ...asset,
@@ -247,7 +227,7 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
           };
         }
         return asset;
-      });
+      }));
     } else {
       const id = `AST-${Math.floor(100 + Math.random() * 900)}`;
       const now = new Date().toISOString().split('T')[0];
@@ -259,11 +239,9 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
         nextService: new Date(Date.now() + 7776000000).toISOString().split('T')[0],
         imageUrl: formData.imageFile || `https://picsum.photos/seed/${id}/400/300`
       };
-      updatedAssets = [assetToAdd, ...assets];
+      setAssets([assetToAdd, ...assets]);
     }
 
-    setAssets(updatedAssets);
-    if (masterData.googleSheetsUrl) handleSync(updatedAssets);
     handleCloseModal();
   };
 
@@ -282,16 +260,30 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
         </div>
         <div className="flex flex-wrap gap-3 w-full md:w-auto">
           <button 
-            disabled={isSyncing}
-            onClick={() => handleSync()}
-            className="px-4 py-2.5 bg-[#0F9D58] text-white rounded-xl text-sm font-bold shadow-lg shadow-green-500/20 hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50"
+            onClick={downloadTemplate}
+            className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-200 transition-all flex items-center gap-2"
           >
-            {isSyncing ? '⏳ Syncing...' : '☁️ Sync Sheets'}
+            <span>📥</span> Template
           </button>
-          <button onClick={downloadTemplate} className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200">📥 Template</button>
-          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 transition-all">📄 Bulk Upload</button>
-          <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
-          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all">+ Add Asset</button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 hover:bg-slate-900 transition-all flex items-center gap-2"
+          >
+            <span>📄</span> Bulk Upload
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept=".xlsx, .xls, .csv" 
+            onChange={handleBulkUpload} 
+          />
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+            <span>+</span> Add Asset
+          </button>
         </div>
       </div>
 
@@ -346,6 +338,7 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                       style={{ width: `${asset.health}%` }}
                     />
                   </div>
+                  {/* Visual Trend Chart */}
                   <HealthTrend assetId={asset.id} currentHealth={asset.health} />
                 </div>
 
@@ -359,6 +352,7 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
         ))}
       </div>
 
+      {/* Upload/Edit Asset Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={handleCloseModal} />
@@ -368,9 +362,11 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                 <h2 className="text-xl font-black text-slate-900">
                   {editingAssetId ? `Edit Asset: ${editingAssetId}` : 'Technical Asset Definition'}
                 </h2>
-                <p className="text-slate-500 text-xs">Register your industrial facility equipment.</p>
+                <p className="text-slate-500 text-xs">
+                  {editingAssetId ? 'Modify existing asset specifications.' : 'Choose from dynamic Master Data specifications.'}
+                </p>
               </div>
-              <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 text-2xl font-light">&times;</button>
+              <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 text-2xl font-light leading-none">&times;</button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[80vh]">
@@ -378,13 +374,23 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Definition</label>
-                    <select required className="w-full p-2.5 border border-slate-200 rounded-lg text-sm bg-white" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                    >
                       {masterData.assetTypes.map(type => <option key={type} value={type}>{type}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Department</label>
-                    <select required className="w-full p-2.5 border border-slate-200 rounded-lg text-sm bg-white" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})}>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={formData.department}
+                      onChange={e => setFormData({...formData, department: e.target.value})}
+                    >
                       {masterData.departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
                     </select>
                   </div>
@@ -393,25 +399,127 @@ const Assets: React.FC<AssetsProps> = ({ masterData }) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Brand</label>
-                    <select required className="w-full p-2.5 border border-slate-200 rounded-lg text-sm bg-white" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})}>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={formData.brand}
+                      onChange={e => setFormData({...formData, brand: e.target.value})}
+                    >
                       {masterData.brands.map(brand => <option key={brand} value={brand}>{brand}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Model</label>
-                    <input required type="text" className="w-full p-2.5 border border-slate-200 rounded-lg text-sm" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} />
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm"
+                      placeholder="Enter Model ID"
+                      value={formData.model}
+                      onChange={e => setFormData({...formData, model: e.target.value})}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Year Model</label>
-                    <select required className="w-full p-2.5 border border-slate-200 rounded-lg text-sm bg-white" value={formData.yearModel} onChange={e => setFormData({...formData, yearModel: e.target.value})}>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={formData.yearModel}
+                      onChange={e => setFormData({...formData, yearModel: e.target.value})}
+                    >
                       {masterData.years.map(year => <option key={year} value={year}>{year}</option>)}
                     </select>
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Serial No (Unique)</label>
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm"
+                      placeholder="SN-XXXX-XXXX"
+                      value={formData.serialNo}
+                      onChange={e => setFormData({...formData, serialNo: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Power Rating</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={formData.power}
+                      onChange={e => setFormData({...formData, power: e.target.value})}
+                    >
+                      {masterData.powerRatings.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Status</label>
+                    <select 
+                      required
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm bg-white"
+                      value={formData.status}
+                      onChange={e => setFormData({...formData, status: e.target.value as AssetStatus})}
+                    >
+                      <option value="Operational">Operational</option>
+                      <option value="Down">Down</option>
+                      <option value="In Maintenance">In Maintenance</option>
+                      <option value="Restricted">Restricted</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Physical Location</label>
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-sm"
+                      placeholder="e.g. Bay 4, Shelf C"
+                      value={formData.location}
+                      onChange={e => setFormData({...formData, location: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                {editingAssetId && (
+                   <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Health Percentage ({formData.health}%)</label>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="100" 
+                      className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      value={formData.health}
+                      onChange={e => setFormData({...formData, health: parseInt(e.target.value)})}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Asset Photo Evidence</label>
+                  <div 
+                    className="border-2 border-dashed border-slate-200 rounded-xl h-24 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-all relative overflow-hidden"
+                    onClick={() => document.getElementById('asset-photo')?.click()}
+                  >
+                    {formData.imageFile ? (
+                      <img src={formData.imageFile} className="w-full h-full object-cover" />
+                    ) : (
+                      <>
+                        <span className="text-xl mb-1">📸</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Attach Image</span>
+                      </>
+                    )}
+                    <input id="asset-photo" type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                  </div>
+                </div>
+
                 <div className="pt-2 flex gap-3 sticky bottom-0 bg-white pb-2">
-                  <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg font-bold text-slate-600 text-sm">Cancel</button>
-                  <button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-all text-sm">
+                  <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-slate-200 rounded-lg font-bold text-slate-600 hover:bg-slate-50 transition-all text-sm">Cancel</button>
+                  <button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 text-sm">
                     {editingAssetId ? 'Update Asset' : 'Register Asset'}
                   </button>
                 </div>

@@ -1,10 +1,23 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Initialize the Google GenAI SDK using process.env.API_KEY as per the guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe access to environment variables
+const getApiKey = () => {
+  try {
+    return (typeof process !== 'undefined' && process.env?.API_KEY) || "";
+  } catch (e) {
+    return "";
+  }
+};
+
+const apiKey = getApiKey();
+const ai = new GoogleGenAI({ apiKey });
 
 export const troubleshootAsset = async (issueDescription: string, assetType: string) => {
+  if (!apiKey) {
+    console.warn("Gemini API Key is missing. Troubleshooting disabled.");
+    return "API Key not configured. Please check environment settings.";
+  }
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -23,7 +36,6 @@ export const troubleshootAsset = async (issueDescription: string, assetType: str
       }
     });
 
-    // Directly access the text property as per latest SDK guidelines.
     return response.text;
   } catch (error) {
     console.error("Gemini troubleshooting error:", error);
@@ -32,6 +44,8 @@ export const troubleshootAsset = async (issueDescription: string, assetType: str
 };
 
 export const analyzeMaintenanceImage = async (base64Image: string, assetName: string) => {
+  if (!apiKey) return "API Key missing.";
+  
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -42,7 +56,6 @@ export const analyzeMaintenanceImage = async (base64Image: string, assetName: st
         ]
       }
     });
-    // Directly access the text property as per latest SDK guidelines.
     return response.text;
   } catch (error) {
     console.error("Gemini image analysis error:", error);

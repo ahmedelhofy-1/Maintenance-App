@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -16,7 +17,7 @@ const INITIAL_MASTER_DATA: MasterData = {
   assetTypes: ['Centrifugal Pump', 'Electric Motor', 'HVAC Unit', 'Air Compressor', 'Hydraulic Press', 'Conveyor System', 'Generator'],
   powerRatings: ['110V AC', '220V AC', '480V 3-Phase', '24V DC', 'Hydraulic', 'Pneumatic'],
   years: Array.from({ length: 16 }, (_, i) => (2025 - i).toString()),
-  googleSheetsUrl: 'https://script.google.com/a/macros/daltexcorp.com/s/AKfycby8ttc-gPu8tX2EOR73guBQrLZdbHCEWTmaoqnxZLrufgPuq_VTlk7UPNP9s54oQub7tg/exec'
+  googleSheetsUrl: ''
 };
 
 const App: React.FC = () => {
@@ -34,13 +35,13 @@ const App: React.FC = () => {
       case 'assets':
         return <Assets masterData={masterData} />;
       case 'workorders':
-        return <WorkOrders masterData={masterData} />;
+        return <WorkOrders />;
       case 'inventory':
         return <Inventory masterData={masterData} />;
       case 'requests':
         return <PartsRequests />;
       case 'annual':
-        return <AnnualRequests masterData={masterData} />;
+        return <AnnualRequests />;
       case 'ai':
         return <AIDiagnostic />;
       case 'masterdata':
