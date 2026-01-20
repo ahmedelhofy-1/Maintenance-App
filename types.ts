@@ -2,12 +2,14 @@
 export type AssetStatus = 'Operational' | 'Down' | 'In Maintenance' | 'Restricted';
 export type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
 export type MaintenanceType = 'PM' | 'CM'; // Preventive vs Corrective
+
 export type WorkOrderStatus = 
-  | 'Logged' 
-  | 'Prioritized' 
-  | 'Maintenance Work' 
-  | 'Testing' 
-  | 'Record Update' 
+  | 'MR Generated' 
+  | 'Manager Review' 
+  | 'Parts Planning' 
+  | 'Scheduled' 
+  | 'Execution' 
+  | 'Closing' 
   | 'Completed';
 
 export interface MasterData {
@@ -49,6 +51,10 @@ export interface WorkOrder {
   isEmergency?: boolean;
   partsAvailable: boolean;
   isOperational?: boolean;
+  loggedHours?: number;
+  totalCost?: number;
+  photosAttached?: string[];
+  sensorReadings?: string;
 }
 
 export interface Part {
@@ -57,6 +63,7 @@ export interface Part {
   category: string;
   stock: number;
   minStock: number;
+  maxStock: number;
   unit: string;
   cost: number;
   location: string;
@@ -75,6 +82,17 @@ export interface PartRequest {
   assetId: string;
   requestedBy: string;
   requestDate: string;
+  status: RequestStatus;
+  items: PartRequestItem[];
+  notes?: string;
+}
+
+export interface AnnualPartRequest {
+  id: string;
+  requestedBy: string;
+  storeLocation: string;
+  requestDate: string;
+  targetYear: string;
   status: RequestStatus;
   items: PartRequestItem[];
   notes?: string;

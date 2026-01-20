@@ -1,11 +1,14 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { MOCK_PART_REQUESTS, MOCK_PARTS, MOCK_ASSETS, MOCK_WORK_ORDERS } from '../constants';
 import { PartRequest, RequestStatus } from '../types';
 
 const PartsRequests: React.FC = () => {
   const [requests, setRequests] = useState<PartRequest[]>(MOCK_PART_REQUESTS);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [newRequest, setNewRequest] = useState({
     assetId: '',
     workOrderId: '',
@@ -28,6 +31,66 @@ const PartsRequests: React.FC = () => {
     setRequests(prev => prev.map(req => 
       req.id === requestId ? { ...req, status: newStatus } : req
     ));
+  };
+
+  const downloadTemplate = () => {
+    const headers = [
+      ['Asset ID', 'Work Order ID', 'Requested By', 'Part ID', 'Quantity', 'Notes']
+    ];
+    const example = [
+      ['AST-001', 'WO-101', 'John Doe', 'PRT-001', '2', 'Needed for routine HVAC maintenance']
+    ];
+    
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ...example]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Requests Template");
+    XLSX.writeFile(wb, "MaintenX_Parts_Request_Template.xlsx");
+  };
+
+  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        const newRequestsList: PartRequest[] = data.map((row: any) => {
+          const id = `REQ-BULK-${Math.floor(1000 + Math.random() * 9000)}`;
+          return {
+            id,
+            assetId: String(row['Asset ID'] || ''),
+            workOrderId: String(row['Work Order ID'] || ''),
+            requestedBy: String(row['Requested By'] || 'System Import'),
+            requestDate: new Date().toISOString().split('T')[0],
+            status: 'Pending',
+            items: [
+              { 
+                partId: String(row['Part ID'] || ''), 
+                quantity: parseInt(row['Quantity']) || 1 
+              }
+            ],
+            notes: String(row['Notes'] || 'Bulk imported request.')
+          };
+        });
+
+        // Filter out completely invalid rows
+        const validRequests = newRequestsList.filter(r => r.assetId && r.items[0].partId);
+
+        setRequests(prev => [...validRequests, ...prev]);
+        alert(`Successfully imported ${validRequests.length} parts requests.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } catch (err) {
+        console.error(err);
+        alert("Failed to parse parts request file. Please ensure you use the provided template.");
+      }
+    };
+    reader.readAsBinaryString(file);
   };
 
   const handleCreateRequest = (e: React.FormEvent) => {
@@ -53,17 +116,38 @@ const PartsRequests: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Store Requisitions</h3>
           <p className="text-slate-500 text-sm">Manage parts allocation for maintenance operations.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 hover:bg-slate-800 transition-all flex items-center gap-2"
-        >
-          <span>📋</span> Create New Request
-        </button>
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+          <button 
+            onClick={downloadTemplate}
+            className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-200 transition-all flex items-center gap-2"
+          >
+            <span>📥</span> Template
+          </button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 hover:bg-slate-900 transition-all flex items-center gap-2"
+          >
+            <span>📄</span> Bulk Upload
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept=".xlsx, .xls, .csv" 
+            onChange={handleBulkUpload} 
+          />
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+            <span>📋</span> New Request
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
@@ -159,6 +243,13 @@ const PartsRequests: React.FC = () => {
           );
         })}
       </div>
+
+      {requests.length === 0 && (
+        <div className="py-20 text-center text-slate-500 bg-white rounded-3xl border border-slate-200 border-dashed">
+          <p className="text-4xl mb-2">📥</p>
+          <p className="font-black uppercase tracking-widest text-sm text-slate-400">No Requisitions Found</p>
+        </div>
+      )}
 
       {/* New Request Modal */}
       {isModalOpen && (

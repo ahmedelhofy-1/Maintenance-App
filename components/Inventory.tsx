@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { MOCK_PARTS } from '../constants';
 import { Part } from '../types';
 
@@ -7,11 +8,65 @@ const Inventory: React.FC = () => {
   const [parts, setParts] = useState<Part[]>(MOCK_PARTS);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredParts = parts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.id.toLowerCase().includes(searchTerm.toLowerCase())
+    String(p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    String(p.id || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const downloadTemplate = () => {
+    const headers = [
+      ['Part ID', 'Part Name', 'Category', 'Stock Level', 'Min Stock Level', 'Max Stock Level', 'Unit', 'Unit Cost', 'Storage Location']
+    ];
+    const example = [
+      ['PRT-EX-001', 'Ball Bearing 6203', 'Bearings', '20', '5', '100', 'pcs', '12.50', 'Shelf B-12']
+    ];
+    
+    const ws = XLSX.utils.aoa_to_sheet([...headers, ...example]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory Template");
+    XLSX.writeFile(wb, "MaintenX_Inventory_Template.xlsx");
+  };
+
+  const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        const newPartsList: Part[] = data.map((row: any) => {
+          const id = row['Part ID'] || `PRT-BULK-${Math.floor(1000 + Math.random() * 9000)}`;
+          return {
+            id,
+            name: String(row['Part Name'] || 'New Part'),
+            category: String(row['Category'] || 'General'),
+            stock: parseInt(row['Stock Level']) || 0,
+            minStock: parseInt(row['Min Stock Level']) || 0,
+            maxStock: parseInt(row['Max Stock Level']) || 0,
+            unit: String(row['Unit'] || 'pcs'),
+            cost: parseFloat(row['Unit Cost']) || 0,
+            location: String(row['Storage Location'] || 'Storehouse')
+          };
+        });
+
+        setParts(prev => [...newPartsList, ...prev]);
+        alert(`Successfully imported ${newPartsList.length} parts to inventory.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } catch (err) {
+        console.error(err);
+        alert("Failed to parse inventory file. Please ensure you use the provided template.");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
 
   return (
     <div className="space-y-6">
@@ -26,12 +81,33 @@ const Inventory: React.FC = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2"
-        >
-          <span>+</span> Add Part to Store
-        </button>
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+          <button 
+            onClick={downloadTemplate}
+            className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold border border-slate-200 hover:bg-slate-200 transition-all flex items-center gap-2"
+          >
+            <span>📥</span> Template
+          </button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-500/20 hover:bg-slate-900 transition-all flex items-center gap-2"
+          >
+            <span>📄</span> Bulk Upload
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept=".xlsx, .xls, .csv" 
+            onChange={handleBulkUpload} 
+          />
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+            <span>+</span> Add Part to Store
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -39,7 +115,8 @@ const Inventory: React.FC = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                <th className="px-6 py-4">Part Information</th>
+                <th className="px-6 py-4">Part ID</th>
+                <th className="px-6 py-4">Part Name</th>
                 <th className="px-6 py-4">Stock Status</th>
                 <th className="px-6 py-4">Storage Location</th>
                 <th className="px-6 py-4">Unit Cost</th>
@@ -50,17 +127,22 @@ const Inventory: React.FC = () => {
               {filteredParts.map((part) => (
                 <tr key={part.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4">
+                    <span className="text-[10px] font-mono text-slate-500 font-bold uppercase">{part.id}</span>
+                  </td>
+                  <td className="px-6 py-4">
                     <div className="font-bold text-slate-900">{part.name}</div>
-                    <div className="text-[10px] font-mono text-slate-500 uppercase">{part.id} • {part.category}</div>
+                    <div className="text-[10px] font-medium text-slate-400 uppercase tracking-tight">{part.category}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <div className={`w-2.5 h-2.5 rounded-full ${part.stock <= part.minStock ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
-                      <span className="font-black text-slate-900">{part.stock} {part.unit}</span>
+                      <span className="font-black text-slate-900">{part.stock} / {part.maxStock} {part.unit}</span>
                     </div>
-                    {part.stock <= part.minStock && (
+                    {part.stock <= part.minStock ? (
                       <div className="text-[9px] font-black text-red-500 uppercase mt-0.5 tracking-tighter">REORDER POINT REACHED (Min: {part.minStock})</div>
-                    )}
+                    ) : part.stock >= part.maxStock ? (
+                       <div className="text-[9px] font-black text-blue-500 uppercase mt-0.5 tracking-tighter">FULL CAPACITY (Max: {part.maxStock})</div>
+                    ) : null}
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-slate-600">
                     <span className="opacity-60 mr-1">📍</span> {part.location}

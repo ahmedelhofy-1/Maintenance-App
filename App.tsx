@@ -8,6 +8,7 @@ import WorkOrders from './components/WorkOrders';
 import MasterDataEditor from './components/MasterData';
 import Inventory from './components/Inventory';
 import PartsRequests from './components/PartsRequests';
+import AnnualRequests from './components/AnnualRequests';
 import { MasterData } from './types';
 
 const INITIAL_MASTER_DATA: MasterData = {
@@ -38,6 +39,8 @@ const App: React.FC = () => {
         return <Inventory />;
       case 'requests':
         return <PartsRequests />;
+      case 'annual':
+        return <AnnualRequests />;
       case 'ai':
         return <AIDiagnostic />;
       case 'masterdata':
