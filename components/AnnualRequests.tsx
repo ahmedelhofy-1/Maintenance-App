@@ -17,7 +17,6 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
     return saved ? JSON.parse(saved) : MOCK_ANNUAL_REQUESTS;
   });
 
-  // Pull current live inventory from localStorage to cross-reference
   const [inventory, setInventory] = useState<Part[]>([]);
 
   useEffect(() => {
@@ -26,18 +25,17 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
       if (savedInventory) {
         setInventory(JSON.parse(savedInventory));
       } else {
-        // Fallback to Master Parts if no inventory exists yet
         setInventory(masterData.parts);
       }
     };
     
     loadInventory();
-    // Re-load inventory whenever the tab becomes active to ensure fresh data
     window.addEventListener('focus', loadInventory);
     return () => window.removeEventListener('focus', loadInventory);
   }, [masterData.parts]);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,13 +56,13 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
           requested_by: req.requestedBy,
           store: req.storeLocation,
           year: req.targetYear,
-          status: req.status,
+          status: req.status || 'Pending',
           part_id: item.partId,
           quantity: item.quantity
         }))
       );
       await syncToGoogleSheets(masterData.googleSheetsUrl, 'AnnualRequests', flattenedForSync);
-      alert("Forecasting data synced to Sheets and saved locally!");
+      alert("Forecasting data synced to Sheets!");
     } catch (err) {
       alert("Sync failed. Local data remains saved.");
     } finally {
@@ -97,18 +95,19 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
         }));
 
         setRequests(prev => [...newRequests, ...prev]);
-        alert(`Successfully imported and saved ${newRequests.length} forecasting entries.`);
+        alert(`Successfully imported ${newRequests.length} entries.`);
         if (fileInputRef.current) fileInputRef.current.value = '';
       } catch (err) { alert("Import failed."); }
     };
     reader.readAsBinaryString(file);
   };
 
-  const getStatusColor = (status: RequestStatus) => {
-    switch (status) {
+  const getStatusStyles = (status?: RequestStatus) => {
+    const s = status || 'Pending';
+    switch (s) {
       case 'Pending': return 'bg-amber-100 text-amber-700 border-amber-200';
       case 'Approved': return 'bg-green-100 text-green-700 border-green-200';
-      case 'Issued': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'Cancelled': return 'bg-red-100 text-red-700 border-red-200';
       default: return 'bg-slate-100 text-slate-500 border-slate-200';
     }
   };
@@ -116,19 +115,14 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
   const flattenedItems = useMemo(() => {
     return (requests || []).flatMap(req => 
       (req.items || []).map(item => {
-        // Find matching part in the LIVE inventory list
         const part = inventory.find(p => p.id === item.partId) || 
                      masterData.parts.find(p => p.id === item.partId);
 
         const partLoc = String(part?.location || '').toLowerCase();
         const targetLoc = String(req.storeLocation || '').toLowerCase();
-        
-        // Calculate stock specific to the requested store location
         const stockInLoc = (partLoc && targetLoc && (partLoc.includes(targetLoc) || targetLoc.includes(partLoc))) 
-          ? (part?.stock || 0) 
-          : 0;
+          ? (part?.stock || 0) : 0;
 
-        // Calculate aggregate stock for this part ID across all locations in the inventory table
         const totalAllStores = inventory
           .filter(p => p.id === item.partId)
           .reduce((sum, p) => sum + (p.stock || 0), 0);
@@ -136,7 +130,7 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
         return {
           requestId: req.id,
           year: req.targetYear,
-          status: req.status,
+          status: req.status || 'Pending',
           store: req.storeLocation,
           partId: item.partId,
           partName: part?.name || 'Unknown Part',
@@ -152,25 +146,39 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
 
   const filteredItems = useMemo(() => {
     const term = (searchTerm || '').toLowerCase();
-    return flattenedItems.filter(item => 
-      (item.partName || '').toLowerCase().includes(term) ||
-      (item.partId || '').toLowerCase().includes(term) ||
-      (item.store || '').toLowerCase().includes(term)
-    );
-  }, [flattenedItems, searchTerm]);
+    return flattenedItems.filter(item => {
+      const matchesSearch = (item.partName || '').toLowerCase().includes(term) ||
+                            (item.partId || '').toLowerCase().includes(term) ||
+                            (item.store || '').toLowerCase().includes(term);
+      const matchesStatus = filterStatus === 'all' || item.status.toLowerCase() === filterStatus.toLowerCase();
+      return matchesSearch && matchesStatus;
+    });
+  }, [flattenedItems, searchTerm, filterStatus]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="relative w-full md:w-96">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-          <input
-            type="text"
-            placeholder="Search planning by part, ID, or location..."
-            className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl outline-none text-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex-1 flex gap-3 w-full md:w-auto">
+          <div className="relative flex-1 max-w-sm">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+            <input
+              type="text"
+              placeholder="Search by part or store..."
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl outline-none text-sm bg-white"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <select 
+            className="px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-bold bg-white"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="pending">Pending Review</option>
+            <option value="approved">Sanctioned</option>
+            <option value="cancelled">Rejected</option>
+          </select>
         </div>
         <div className="flex flex-wrap gap-3">
           {permissions.edit && (
@@ -179,7 +187,7 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
               onClick={() => handleSync()}
               className="px-4 py-2.5 bg-[#0F9D58] text-white rounded-xl text-sm font-bold shadow-lg shadow-green-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
             >
-              {isSyncing ? '⏳ Syncing...' : '☁️ Push to Sheets'}
+              {isSyncing ? '⏳ Syncing...' : '☁️ Push to Cloud'}
             </button>
           )}
           
@@ -197,24 +205,26 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
           )}
 
           <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls, .csv" onChange={handleBulkUpload} />
-          {permissions.delete && (
-            <button onClick={() => { if(confirm("Reset local planning data?")) setRequests([]); }} className="px-4 py-2.5 border border-slate-200 text-slate-400 rounded-xl text-sm font-bold">🗑️ Reset</button>
-          )}
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden border-l-[12px] border-l-indigo-600">
+        <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+            <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
+              Strategic Planning Registry
+            </h3>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{filteredItems.length} Entries found</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                <th className="px-6 py-4">Part ID</th>
-                <th className="px-6 py-4">Part Name</th>
+              <tr className="bg-white text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-50">
+                <th className="px-6 py-4">Part Details</th>
                 <th className="px-6 py-4">Planning Qty</th>
-                <th className="px-6 py-4">In Store ({filteredItems[0]?.store || 'Local'})</th>
-                <th className="px-6 py-4">Total (Global)</th>
-                <th className="px-6 py-4">Max Capacity</th>
-                <th className="px-6 py-4 text-right">Status</th>
+                <th className="px-6 py-4">In-Store Stock</th>
+                <th className="px-6 py-4">Global Network</th>
+                <th className="px-6 py-4">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -222,28 +232,39 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
                 const isOverCapacity = item.stockInLoc + item.qtyRequested > item.maxLevel && item.maxLevel > 0;
                 
                 return (
-                  <tr key={`${item.requestId}-${idx}`} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4"><span className="text-[10px] font-mono font-black bg-slate-100 px-2 py-1 rounded">{item.partId}</span></td>
+                  <tr key={`${item.requestId}-${idx}`} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900">{item.partName}</div>
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{item.requestId} • {item.year}</div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-mono font-black bg-slate-100 px-2 py-1 rounded border border-slate-200">{item.partId}</span>
+                        <div>
+                          <div className="font-black text-slate-900 uppercase text-xs">{item.partName}</div>
+                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">REF: {item.requestId} • {item.store}</div>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`text-sm font-black ${isOverCapacity ? 'text-orange-500' : 'text-blue-600'}`}>
-                        {item.qtyRequested} {item.unit}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className={`text-sm font-black ${isOverCapacity ? 'text-orange-500' : 'text-blue-600'}`}>
+                          {item.qtyRequested} {item.unit}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">Target: {item.year}</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-sm font-bold text-slate-700">
-                      {item.stockInLoc} {item.unit}
+                    <td className="px-6 py-4">
+                       <div className="text-xs font-black text-slate-700">{item.stockInLoc} {item.unit}</div>
+                       <div className="w-16 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                          <div 
+                            className={`h-full ${isOverCapacity ? 'bg-orange-400' : 'bg-green-400'}`} 
+                            style={{ width: `${Math.min(100, (item.stockInLoc / (item.maxLevel || 100)) * 100)}%` }}
+                          />
+                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm font-bold text-slate-900">
-                      {item.totalStock} {item.unit}
+                    <td className="px-6 py-4">
+                      <span className="text-xs font-black text-slate-900">{item.totalStock} {item.unit}</span>
+                      <p className="text-[9px] text-slate-400 uppercase">Across all stores</p>
                     </td>
-                    <td className="px-6 py-4 text-sm font-bold text-slate-900">
-                      {item.maxLevel > 0 ? `${item.maxLevel} ${item.unit}` : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>
+                    <td className="px-6 py-4">
+                      <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase border tracking-widest ${getStatusStyles(item.status)}`}>
                         {item.status}
                       </span>
                     </td>
@@ -251,7 +272,10 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
                 );
               }) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-20 text-center text-slate-400 italic text-sm">No planning data available matching current filters.</td>
+                  <td colSpan={5} className="px-6 py-20 text-center opacity-40">
+                    <span className="text-4xl block mb-2">🔍</span>
+                    <p className="text-sm font-bold uppercase">No planning data found.</p>
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -259,11 +283,17 @@ const AnnualRequests: React.FC<AnnualRequestsProps> = ({ masterData, permissions
         </div>
       </div>
       
-      <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
-        <span className="text-xl">💡</span>
-        <p className="text-xs text-blue-700 leading-relaxed">
-          <b>Planning Tip:</b> Stock levels are synced in real-time from your <b>Inventory</b> tab. If you update stock counts or locations in the inventory module, return here to see the recalculated impact on your annual forecast.
+      <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] flex items-center gap-4">
+        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm">💡</div>
+        <p className="text-xs text-indigo-800 leading-relaxed font-medium flex-1">
+          <b>Governance Workflow:</b> Forecasting entries uploaded here are automatically routed to the <b>Approval Hub</b> for Manager sanctioning. Once approved, they are designated as sanctioned budget for procurement cycles.
         </p>
+        <button 
+          onClick={() => window.location.hash = 'approvals'}
+          className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/10"
+        >
+          View Approval Hub
+        </button>
       </div>
     </div>
   );
